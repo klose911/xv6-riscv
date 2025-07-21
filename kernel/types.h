@@ -1,3 +1,7 @@
+/**
+ * @brief This file defines various types used throughout the kernel. 
+ * 
+ */
 typedef unsigned int   uint;
 typedef unsigned short ushort;
 typedef unsigned char  uchar;
@@ -7,4 +11,4 @@ typedef unsigned short uint16;
 typedef unsigned int  uint32;
 typedef unsigned long uint64;
 
-typedef uint64 pde_t;
+typedef uint64 pde_t; // page directory entry, 64 bits unsigned integer
