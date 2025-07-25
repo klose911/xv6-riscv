@@ -56,29 +56,35 @@ LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
 
+# -Wall: enable all warnings
+# -Werror: treat warnings as errors
+# -fno-omit-frame-pointer: keep frame pointers for debugging
+# -ggdb: generate debugging information for GDB
+# -gdwarf-2: use DWARF version 2 for debugging information
 CFLAGS = -Wall -Werror -O -fno-omit-frame-pointer -ggdb -gdwarf-2
-CFLAGS += -MD
-CFLAGS += -mcmodel=medany
+CFLAGS += -MD # generate dependency files
+CFLAGS += -mcmodel=medany # use medium code model for RV64
 # CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
-CFLAGS += -fno-common -nostdlib
-CFLAGS += -fno-builtin-strncpy -fno-builtin-strncmp -fno-builtin-strlen -fno-builtin-memset
+CFLAGS += -fno-common -nostdlib # no standard library
+CFLAGS += -fno-builtin-strncpy -fno-builtin-strncmp -fno-builtin-strlen -fno-builtin-memset # disable built-in functions
 CFLAGS += -fno-builtin-memmove -fno-builtin-memcmp -fno-builtin-log -fno-builtin-bzero
 CFLAGS += -fno-builtin-strchr -fno-builtin-exit -fno-builtin-malloc -fno-builtin-putc
 CFLAGS += -fno-builtin-free
-CFLAGS += -fno-builtin-memcpy -Wno-main
+CFLAGS += -fno-builtin-memcpy -Wno-main # disable warning for main function
 CFLAGS += -fno-builtin-printf -fno-builtin-fprintf -fno-builtin-vprintf
 CFLAGS += -I.
-CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector) # disable stack protector if supported
 
 # Disable PIE when possible (for Ubuntu 16.10 toolchain)
-ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
-CFLAGS += -fno-pie -no-pie
+ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),) # if the compiler supports -fno-pie
+CFLAGS += -fno-pie -no-pie # disable position-independent executable
+else
 endif
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
 CFLAGS += -fno-pie -nopie
 endif
 
-LDFLAGS = -z max-page-size=4096
+LDFLAGS = -z max-page-size=4096 # set maximum page size to 4096 bytes
 
 $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
 	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
