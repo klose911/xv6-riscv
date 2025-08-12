@@ -11,9 +11,9 @@
 void
 initlock(struct spinlock *lk, char *name)
 {
-  lk->name = name;
-  lk->locked = 0;
-  lk->cpu = 0;
+  lk->name = name; // 设置自旋锁的名称
+  lk->locked = 0; // 0 表示锁未被持有 
+  lk->cpu = 0; // 初始化时没有 CPU 持有锁
 }
 
 // Acquire the lock.
