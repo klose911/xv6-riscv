@@ -9,20 +9,37 @@
 //   control-p -- print process list
 //
 
-#include <stdarg.h>
+#include <stdarg.h> // 函数可变参数
 
 #include "types.h"
 #include "param.h"
-#include "spinlock.h"
-#include "sleeplock.h"
-#include "fs.h"
-#include "file.h"
+#include "spinlock.h" // 自旋锁
+#include "sleeplock.h" // 互斥锁
+#include "fs.h" // 文件系统相关数据结构
+#include "file.h" // 文件相关数据结构
 #include "memlayout.h"
 #include "riscv.h"
-#include "defs.h"
-#include "proc.h"
+#include "defs.h" // 系统调用和其他内核函数的声明
+#include "proc.h" // 进程相关数据结构
 
+/**
+ * @brief 用于表示退格键（Backspace）值为 0x100
+ * 
+ * 通常在控制台输入处理中，用于删除前一个字符。使用一个大于常规 ASCII 范围的值可以避免与普通字符混淆
+ * 
+ */
 #define BACKSPACE 0x100
+
+/**
+ * @brief 将字符 x 转换为对应的控制字符的宏
+ * 例如，C('C') 会得到 3，因为 'C' - '@' = 67 - 64 = 3
+ * 
+ * @param x 要转换的字符
+ * @return int 转换后的控制字符值 
+ * 
+ * 这种转换方式常用于识别键盘上的 Ctrl+键组合（如 Ctrl+C、Ctrl+D），便于在控制台或终端程序中处理各种控制命令
+ * 
+ */
 #define C(x)  ((x)-'@')  // Control-x
 
 //
@@ -41,15 +58,22 @@ consputc(int c)
   }
 }
 
+/**
+ * @brief 匿名结构体变量 cons，用于管理控制台输入缓冲区及其相关状态
+ * 
+ * 能够高效地管理控制台输入，实现字符的存储、读取和编辑功能
+ * 是操作系统或终端程序实现输入处理的基础
+ * 
+ */
 struct {
-  struct spinlock lock;
+  struct spinlock lock; // 自旋锁，用于保护控制台缓冲区的并发访问，确保多线程或多核环境下的数据一致性。
   
   // input
-#define INPUT_BUF_SIZE 128
-  char buf[INPUT_BUF_SIZE];
-  uint r;  // Read index
-  uint w;  // Write index
-  uint e;  // Edit index
+#define INPUT_BUF_SIZE 128 // 输入缓冲区大小，定义为 128 字节
+  char buf[INPUT_BUF_SIZE]; // 输入缓冲区，用于存储从控制台输入的字符
+  uint r;  // Read index 读取索引，指向下一个要读取的字符位置
+  uint w;  // Write index 写入索引，指向下一个要写入的字符位置
+  uint e;  // Edit index 编辑索引，指向当前正在编辑的字符位置
 } cons;
 
 //
