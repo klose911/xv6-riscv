@@ -27,7 +27,7 @@ void            bunpin(struct buf*);
  * 
  */
 void            consoleinit(void);
-void            consolentr(int);
+void            consoleintr(int);
 void            consputc(int);
 
 // exec.c
