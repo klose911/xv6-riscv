@@ -205,12 +205,13 @@ consoleintr(int c)
 void
 consoleinit(void)
 {
-  initlock(&cons.lock, "cons");
+  initlock(&cons.lock, "cons"); // 初始化console相关的自旋锁，保护console的缓存区
 
-  uartinit();
+  uartinit(); // 初始化UART硬件，设置波特率、数据格式等 
 
   // connect read and write system calls
   // to consoleread and consolewrite.
-  devsw[CONSOLE].read = consoleread;
+  // 设置console设备的读写函数指针 （devsw数组中索引为CONSOLE的元素） 
+  devsw[CONSOLE].read = consoleread; 
   devsw[CONSOLE].write = consolewrite;
 }
