@@ -46,15 +46,21 @@
 // send one character to the uart.
 // called by printf(), and to echo input characters,
 // but not from write().
-//
+// 
 void
 consputc(int c)
 {
   if(c == BACKSPACE){
     // if the user typed backspace, overwrite with a space.
+    // 当检测到输入字符是退格键（BACKSPACE）时
+    // 函数会依次输出 \b（退格）、空格和再一次 \b
+    // 这样做的目的是：先将光标向左移动一格（退格），然后用空格覆盖原来的字符
+    // 再退格一次将光标移回原位，实现“删除”字符的效果
+    // 这是终端常用的退格处理方式，这种实现方式可以让控制台正确处理退格操作，提升用户输入体验
     uartputc_sync('\b'); uartputc_sync(' '); uartputc_sync('\b');
   } else {
-    uartputc_sync(c);
+    // 如果输入的不是退格键，函数就直接调用 uartputc_sync(c) 输出该字符到串口终端
+    uartputc_sync(c); 
   }
 }
 
@@ -79,19 +85,31 @@ struct {
 //
 // user write()s to the console go here.
 //
+
+/**
+ * @brief 数据写入控制台（通常是串口终端）
+ * 
+ * @param user_src 标记数据源是用户空间还是内核空间, 0 表示内核空间，1 表示用户空间
+ * @param src 源数据的起始地址
+ * @param n 要写入的字节数
+ * 
+ * @return int 返回实际写入的字节数 
+ */
 int
 consolewrite(int user_src, uint64 src, int n)
 {
   int i;
 
-  for(i = 0; i < n; i++){
+  for(i = 0; i < n; i++){ // 循环遍历要写入的字节数
     char c;
+    // either_copyin(&c, user_src, src+i, 1) 用于从指定的源空间（用户或内核）拷贝一个字节到变量 c
+    // 如果拷贝失败（返回 -1），则提前结束循环
     if(either_copyin(&c, user_src, src+i, 1) == -1)
       break;
-    uartputc(c);
+    uartputc(c); // 将读取的字符发送到 UART 设备进行输出
   }
 
-  return i;
+  return i; // 返回实际写入的字节数
 }
 
 //

@@ -28,6 +28,15 @@ void            bunpin(struct buf*);
  */
 void            consoleinit(void);
 void            consoleintr(int);
+
+/**
+ * @brief 向控制台输出单个字符
+ * 
+ * @param c 要输出的字符 
+ * 
+ * @return void
+ * 
+ */
 void            consputc(int);
 
 // exec.c
