@@ -92,11 +92,33 @@ struct inode {
 };
 
 // map major device number to device functions.
+/**
+ * @brief devsw 的结构体，用于将主设备号（major device number）映射到具体的设备操作函数
+ * 
+ */
 struct devsw {
-  int (*read)(int, uint64, int);
+  /**
+   * 指向设备的读操作函数指针
+   * 
+   * 参数通常包括设备号、数据缓冲区地址和读取的字节数
+   * 
+   * 返回值为实际读取的字节数或错误码
+   * 
+   */
+  int (*read)(int, uint64, int); 
+
+  /**
+   * 指向设备的写操作函数指针
+   * 
+   * 参数通常包括设备号、数据缓冲区地址和写入的字节数
+   * 
+   * 返回值为实际写入的字节数或错误码
+   * 
+   */
   int (*write)(int, uint64, int);
 };
 
+// devsw结构体数组，每一个元素对应一个设备
 extern struct devsw devsw[];
 
-#define CONSOLE 1
+#define CONSOLE 1 // console设备的主设备号

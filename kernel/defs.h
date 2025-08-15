@@ -17,9 +17,26 @@ void            bwrite(struct buf*);
 void            bpin(struct buf*);
 void            bunpin(struct buf*);
 
-// console.c
+// console.c 控制台功能
+/**
+ * @brief 初始化控制台
+ * 
+ * @param void  
+ * 
+ * @return void
+ * 
+ */
 void            consoleinit(void);
 void            consoleintr(int);
+
+/**
+ * @brief 向控制台输出单个字符
+ * 
+ * @param c 要输出的字符 
+ * 
+ * @return void
+ * 
+ */
 void            consputc(int);
 
 // exec.c
@@ -113,6 +130,16 @@ void            swtch(struct context*, struct context*);
 // spinlock.c
 void            acquire(struct spinlock*);
 int             holding(struct spinlock*);
+
+/**
+ * @brief 初始化自旋锁
+ * 
+ * @param lk 自旋锁结构体指针
+ * @param name 自旋锁名称字符串
+ * 
+ * @return void 无返回
+ * 
+ */
 void            initlock(struct spinlock*, char*);
 void            release(struct spinlock*);
 void            push_off(void);
