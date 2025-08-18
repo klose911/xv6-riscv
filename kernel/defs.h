@@ -128,7 +128,23 @@ void            procdump(void);
 void            swtch(struct context*, struct context*);
 
 // spinlock.c
+
+/**
+ * @brief 获取自旋锁 
+ * 
+ * @param lk 自旋锁结构体指针
+ *  
+ * @return void 无返回
+ */
 void            acquire(struct spinlock*);
+
+/**
+ * @brief 检查自旋锁是否被持有
+ * 
+ * @param lk 自旋锁结构体指针
+ * 
+ * @return int 如果锁被持有返回 1，否则返回 0
+ */
 int             holding(struct spinlock*);
 
 /**
@@ -141,8 +157,26 @@ int             holding(struct spinlock*);
  * 
  */
 void            initlock(struct spinlock*, char*);
+
+/**
+ * @brief 释放自旋锁
+ * 
+ * @param lk 自旋锁结构体指针 
+ * 
+ * @return int 
+ */
 void            release(struct spinlock*);
+
+/**
+ * @brief 关闭中断并增加嵌套深度
+ * 
+ */
 void            push_off(void);
+
+/**
+ * @brief 恢复中断并减少嵌套深度
+ * 
+ */
 void            pop_off(void);
 
 // sleeplock.c
