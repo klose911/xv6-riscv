@@ -180,9 +180,44 @@ void            push_off(void);
 void            pop_off(void);
 
 // sleeplock.c
+/**
+ * @brief 获取互斥锁（sleeplock） 
+ * 
+ * @param lk 互斥锁结构体指针
+ * 
+ * @return void 无返回
+ * 
+ */
 void            acquiresleep(struct sleeplock*);
+
+/**
+ * @brief 释放互斥锁（sleeplock） 
+ * 
+ * @param lk 互斥锁结构体指针 
+ * 
+ * @return void 无返回
+ * 
+ */
 void            releasesleep(struct sleeplock*);
+
+/**
+ * @brief 检查互斥锁是否被当前进程持有
+ * 
+ * @param lk 互斥锁结构体指针
+ * 
+ * @return int 如果锁被当前进程持有返回 1，否则返回 0
+ * 
+ */
 int             holdingsleep(struct sleeplock*);
+
+/**
+ * @brief 初始化一个互斥锁（sleeplock） 
+ * 
+ * @param lk 互斥锁结构体指针
+ * @param name 互斥锁名称字符串
+ * 
+ * @return void 无返回
+ */
 void            initsleeplock(struct sleeplock*, char*);
 
 // string.c
