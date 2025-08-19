@@ -27,6 +27,17 @@ void            bunpin(struct buf*);
  * 
  */
 void            consoleinit(void);
+
+/**
+ * @brief 控制台输入中断处理函数 
+ * 
+ * 每当串口（UART）收到输入字符时，uartintr() 就会调用这个处理函数
+ * 
+ * @param c 输入的字符 
+ * 
+ * @return void 
+ * 
+ */
 void            consoleintr(int);
 
 /**
