@@ -27,6 +27,17 @@ void            bunpin(struct buf*);
  * 
  */
 void            consoleinit(void);
+
+/**
+ * @brief 控制台输入中断处理函数 
+ * 
+ * 每当串口（UART）收到输入字符时，uartintr() 就会调用这个处理函数
+ * 
+ * @param c 输入的字符 
+ * 
+ * @return void 
+ * 
+ */
 void            consoleintr(int);
 
 /**
@@ -94,8 +105,39 @@ int             piperead(struct pipe*, uint64, int);
 int             pipewrite(struct pipe*, uint64, int);
 
 // printf.c
+/**
+ * @brief 格式化输出函数 
+ * 
+ * @param fmt 格式化字符串
+ * @param ... 可变参数
+ * 
+ */
+
+// __attribute__ ((format (printf, 1, 2))) 是 GCC 和 Clang 编译器支持的一个函数属性
+// 用于检查类似 printf 的格式化输出函数的参数类型和数量是否匹配
+// 具体含义如下：
+// format (printf, 1, 2) 指定该函数的第 1 个参数（从 1 开始计数）是格式字符串，
+//                       第 2 个参数及其后续参数是可变参数（即要被格式化输出的内容）
+// 编译器会根据格式字符串自动检查后续参数的类型和数量是否正确
+// 如果格式字符串和参数类型不匹配，编译器会在编译时给出警告或错误提示
 int            printf(char*, ...) __attribute__ ((format (printf, 1, 2)));
+
+/**
+ * @brief 触发内核崩溃 
+ * 
+ */
+// __attribute__((noreturn)) 是 GCC 和 Clang 编译器支持的一个函数属性
+// 用于告诉编译器：被修饰的函数不会返回到调用者
+// 常见的用法是在实现死循环、直接终止程序（如 exit()、panic()）或触发异常的函数前加上这个属性
+// 这样做有两个主要好处：
+// 1. 编译器可以进行更激进的优化，因为它知道该函数调用后不会有后续代码执行
+// 2. 如果在调用 __attribute__((noreturn)) 的函数后还有代码，编译器会发出警告，帮助开发者发现潜在的逻辑错误 
 void            panic(char*) __attribute__((noreturn));
+
+/**
+ * @brief 初始化 printf 函数
+ * 
+ */
 void            printfinit(void);
 
 // proc.c
@@ -128,7 +170,23 @@ void            procdump(void);
 void            swtch(struct context*, struct context*);
 
 // spinlock.c
+
+/**
+ * @brief 获取自旋锁 
+ * 
+ * @param lk 自旋锁结构体指针
+ *  
+ * @return void 无返回
+ */
 void            acquire(struct spinlock*);
+
+/**
+ * @brief 检查自旋锁是否被持有
+ * 
+ * @param lk 自旋锁结构体指针
+ * 
+ * @return int 如果锁被持有返回 1，否则返回 0
+ */
 int             holding(struct spinlock*);
 
 /**
@@ -141,14 +199,67 @@ int             holding(struct spinlock*);
  * 
  */
 void            initlock(struct spinlock*, char*);
+
+/**
+ * @brief 释放自旋锁
+ * 
+ * @param lk 自旋锁结构体指针 
+ * 
+ * @return int 
+ */
 void            release(struct spinlock*);
+
+/**
+ * @brief 关闭中断并增加嵌套深度
+ * 
+ */
 void            push_off(void);
+
+/**
+ * @brief 恢复中断并减少嵌套深度
+ * 
+ */
 void            pop_off(void);
 
 // sleeplock.c
+/**
+ * @brief 获取互斥锁（sleeplock） 
+ * 
+ * @param lk 互斥锁结构体指针
+ * 
+ * @return void 无返回
+ * 
+ */
 void            acquiresleep(struct sleeplock*);
+
+/**
+ * @brief 释放互斥锁（sleeplock） 
+ * 
+ * @param lk 互斥锁结构体指针 
+ * 
+ * @return void 无返回
+ * 
+ */
 void            releasesleep(struct sleeplock*);
+
+/**
+ * @brief 检查互斥锁是否被当前进程持有
+ * 
+ * @param lk 互斥锁结构体指针
+ * 
+ * @return int 如果锁被当前进程持有返回 1，否则返回 0
+ * 
+ */
 int             holdingsleep(struct sleeplock*);
+
+/**
+ * @brief 初始化一个互斥锁（sleeplock） 
+ * 
+ * @param lk 互斥锁结构体指针
+ * @param name 互斥锁名称字符串
+ * 
+ * @return void 无返回
+ */
 void            initsleeplock(struct sleeplock*, char*);
 
 // string.c
