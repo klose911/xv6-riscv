@@ -105,8 +105,39 @@ int             piperead(struct pipe*, uint64, int);
 int             pipewrite(struct pipe*, uint64, int);
 
 // printf.c
+/**
+ * @brief 格式化输出函数 
+ * 
+ * @param fmt 格式化字符串
+ * @param ... 可变参数
+ * 
+ */
+
+// __attribute__ ((format (printf, 1, 2))) 是 GCC 和 Clang 编译器支持的一个函数属性
+// 用于检查类似 printf 的格式化输出函数的参数类型和数量是否匹配
+// 具体含义如下：
+// format (printf, 1, 2) 指定该函数的第 1 个参数（从 1 开始计数）是格式字符串，
+//                       第 2 个参数及其后续参数是可变参数（即要被格式化输出的内容）
+// 编译器会根据格式字符串自动检查后续参数的类型和数量是否正确
+// 如果格式字符串和参数类型不匹配，编译器会在编译时给出警告或错误提示
 int            printf(char*, ...) __attribute__ ((format (printf, 1, 2)));
+
+/**
+ * @brief 触发内核崩溃 
+ * 
+ */
+// __attribute__((noreturn)) 是 GCC 和 Clang 编译器支持的一个函数属性
+// 用于告诉编译器：被修饰的函数不会返回到调用者
+// 常见的用法是在实现死循环、直接终止程序（如 exit()、panic()）或触发异常的函数前加上这个属性
+// 这样做有两个主要好处：
+// 1. 编译器可以进行更激进的优化，因为它知道该函数调用后不会有后续代码执行
+// 2. 如果在调用 __attribute__((noreturn)) 的函数后还有代码，编译器会发出警告，帮助开发者发现潜在的逻辑错误 
 void            panic(char*) __attribute__((noreturn));
+
+/**
+ * @brief 初始化 printf 函数
+ * 
+ */
 void            printfinit(void);
 
 // proc.c
