@@ -118,54 +118,76 @@ consolewrite(int user_src, uint64 src, int n)
 // user_dist indicates whether dst is a user
 // or kernel address.
 //
+
+/**
+ * @brief 从控制台读取数据
+ * 
+ * @param user_dst 标记目标地址是用户空间还是内核空间, 0 表示内核空间，1 表示用户空间
+ * @param dst 目标地址，数据将被写入到该地址
+ * @param n 要读取的字节数
+ * 
+ * @return int 返回实际读取的字节数 
+ * 
+ */
 int
 consoleread(int user_dst, uint64 dst, int n)
 {
-  uint target;
-  int c;
-  char cbuf;
+  uint target; // 目标字节数，记录要读取的总字节数
+  int c; // 用于存储从控制台读取的字符
+  char cbuf; // 用于存储从控制台读取的字符，准备写入用户空间或内核空间
 
-  target = n;
-  acquire(&cons.lock);
-  while(n > 0){
+  target = n; // 保存初始的要读取的字节数，以便在函数结束时返回 
+  acquire(&cons.lock); // 获取控制台自旋锁，确保对控制台缓冲区的独占访问
+  while(n > 0){ 
     // wait until interrupt handler has put some
     // input into cons.buffer.
+    // 等待控制台缓冲区有可读数据
+    // 如果 cons.r 等于 cons.w，表示缓冲区为空，进入休眠
+    // 当 cons.r 不等于 cons.w 时，表示有数据可读
     while(cons.r == cons.w){
-      if(killed(myproc())){
-        release(&cons.lock);
+      if(killed(myproc())){ // 检查当前进程是否被杀死，如果是，则释放锁并返回 -1
+        release(&cons.lock); 
         return -1;
       }
-      sleep(&cons.r, &cons.lock);
+      sleep(&cons.r, &cons.lock); // 休眠，等待控制台输入
     }
 
-    c = cons.buf[cons.r++ % INPUT_BUF_SIZE];
+    // 从控制台缓冲区读取一个字符，并更新读取索引 cons.r 
+    // 这里使用模运算确保索引在缓冲区大小范围内循环
+    c = cons.buf[cons.r++ % INPUT_BUF_SIZE];  
 
-    if(c == C('D')){  // end-of-file
-      if(n < target){
+
+    // 这段代码用于处理控制台输入中的文件结束符（EOF），即用户按下 Ctrl+D 的情况
+    if(c == C('D')){  // end-of-file 即 Ctrl+D）时，表示用户希望结束输入，相当于到达文件末尾
+      if(n < target){ // 已经读取了一些数据（n < target），说明本次读取还没有消耗掉所有请求的字节数
         // Save ^D for next time, to make sure
         // caller gets a 0-byte result.
+        // 为了保证下次读取时还能正确检测到 EOF，代码会将读取索引 cons.r 回退一位，把 Ctrl+D 留在缓冲区中
+        // 这样，下一次读取操作会立即遇到 EOF，返回 0 字节，符合标准输入行为
+        // 这种处理方式确保了 Ctrl+D 能正确地作为输入结束标志，并且多次读取时行为一致
         cons.r--;
       }
-      break;
+      break; // 直接跳出循环，结束读取
     }
 
     // copy the input byte to the user-space buffer.
+    // 拷贝读取的字符到用户空间或内核空间
     cbuf = c;
     if(either_copyout(user_dst, dst, &cbuf, 1) == -1)
       break;
 
-    dst++;
-    --n;
+    dst++; // 更新目标地址，准备写入下一个字符
+    --n; // 减少剩余要读取的字节数
 
-    if(c == '\n'){
+    if(c == '\n'){ // 如果读取到换行符（\n），表示一行输入结束
       // a whole line has arrived, return to
       // the user-level read().
-      break;
+      break; // 跳出循环，结束读取
     }
   }
-  release(&cons.lock);
+  release(&cons.lock); // 释放控制台自旋锁，允许其他线程访问控制台缓冲区
 
-  return target - n;
+  return target - n; // 返回实际读取的字节数，即初始请求的字节数减去剩余未读取的字节数
 }
 
 //
@@ -174,50 +196,66 @@ consoleread(int user_dst, uint64 dst, int n)
 // do erase/kill processing, append to cons.buf,
 // wake up consoleread() if a whole line has arrived.
 //
+
+// 该函数会处理输入中的删除（erase）和行清除（kill）操作
+// 并将有效字符追加到控制台输入缓冲区 cons.buf 中
+// 
+// 如果用户输入了一整行（通常以回车或换行结束），函数会唤醒正在等待输入的 consoleread()
+// 让其可以读取完整的一行数据
 void
 consoleintr(int c)
 {
-  acquire(&cons.lock);
+  acquire(&cons.lock); // 获取控制台自旋锁，确保对控制台缓冲区的独占访问
 
   switch(c){
-  case C('P'):  // Print process list.
-    procdump();
+  case C('P'):  // Print process list. 
+    procdump(); // 打印当前进程列表
     break;
-  case C('U'):  // Kill line.
+  case C('U'):  // Kill line. 删除行
+    // 一次性删除当前输入行的所有字符，直到遇到上一行的换行符 \n 或缓冲区为空 
+    // cons.e 是编辑索引，指向当前正在编辑的位置；cons.w 是写入索引，指向输入缓冲区的起始位置 
+    // cons.e != cons.w 保证不会越过当前输入的起始位置，防止删除超出本行的内容 
+    // cons.buf[(cons.e-1) % INPUT_BUF_SIZE] != '\n' 检查当前要删除的字符是否为换行符
+    // 如果遇到换行符就停止，确保只删除本行内容
     while(cons.e != cons.w &&
           cons.buf[(cons.e-1) % INPUT_BUF_SIZE] != '\n'){
-      cons.e--;
-      consputc(BACKSPACE);
+      cons.e--; // 将编辑索引向前移动一位
+      consputc(BACKSPACE); // 在终端上执行退格操作，视觉上删除一个字符
     }
     break;
-  case C('H'): // Backspace
+  case C('H'): // Backspace 
   case '\x7f': // Delete key
+    // 如果用户输入了退格键或删除键，检查是否有字符可以删除
     if(cons.e != cons.w){
       cons.e--;
       consputc(BACKSPACE);
     }
-    break;
-  default:
-    if(c != 0 && cons.e-cons.r < INPUT_BUF_SIZE){
-      c = (c == '\r') ? '\n' : c;
+    break; 
+  default: // 处理控制台输入字符的常规情况，并将其存入输入缓冲区
+    if(c != 0 && cons.e-cons.r < INPUT_BUF_SIZE){ // 检查输入字符 c 是否有效且缓冲区未满 
+      c = (c == '\r') ? '\n' : c; // 如果输入的是回车符 \r，会被转换为换行符 \n，以统一行结束符的处理 
 
       // echo back to the user.
-      consputc(c);
+      consputc(c); // 将输入的字符回显到控制台
 
       // store for consumption by consoleread().
-      cons.buf[cons.e++ % INPUT_BUF_SIZE] = c;
+      // 字符被存入输入缓冲区 cons.buf，
+      cons.buf[cons.e++ % INPUT_BUF_SIZE] = c; // 编辑索引 cons.e 递增，确保缓冲区循环利用 
 
-      if(c == '\n' || c == C('D') || cons.e-cons.r == INPUT_BUF_SIZE){
+      if(c == '\n' || c == C('D') || cons.e-cons.r == INPUT_BUF_SIZE){ 
         // wake up consoleread() if a whole line (or end-of-file)
         // has arrived.
-        cons.w = cons.e;
-        wakeup(&cons.r);
+        // 如果输入的是换行符、Ctrl+D（文件结束符，C('D')），或 缓冲区已满 
+        cons.w = cons.e; // 将写入索引 cons.w 更新为当前编辑索引 cons.e
+        // 唤醒等待输入的进程（如 consoleread()），表示一整行输入或输入结束已经到达，可以被读取
+        // 这保证了控制台输入的同步和行缓冲行为
+        wakeup(&cons.r); 
       }
     }
     break;
   }
   
-  release(&cons.lock);
+  release(&cons.lock); // 释放控制台自旋锁，允许其他线程访问控制台缓冲区
 }
 
 void
