@@ -88,8 +88,29 @@ void            ramdiskintr(void);
 void            ramdiskrw(struct buf*);
 
 // kalloc.c
+/**
+ * @brief 分配一页物理内存
+ * 
+ * @return void* 指向分配的内存页的指针，返回0 代表分配失败（内存全满）
+ */
 void*           kalloc(void);
+
+/**
+ * @brief 释放一页物理内存
+ * 
+ * 当某个内存页不再被使用时，调用 kfree 可以将这页内存归还给内存分配器
+ * 
+ * @param pa 指向某页内存的开始处
+ * 
+ * 通常，kfree 只应被用于释放由 kalloc 分配出来的页面，确保内存管理的正确性和系统的稳定性
+ * 
+ */
 void            kfree(void *);
+
+/**
+ * @brief 内核物理内存分配器的初始化
+ * 
+ */
 void            kinit(void);
 
 // log.c
