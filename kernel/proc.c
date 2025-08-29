@@ -29,16 +29,24 @@ struct spinlock wait_lock;
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
+
+// 为每个进程分配一页物理内存作为其内核栈
+// 这意味着每个进程在内核态运行时都有独立的栈空间，保证内核操作的安全和隔离
+
+// 在内核栈之后紧跟着映射一个无效的“保护页”（guard page）。这页内存不可访问，用于捕捉栈溢出错误
+// 如果内核栈使用过度导致越界访问，程序会因为访问无效页而触发异常，从而及时发现和定位栈溢出问题
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
   struct proc *p;
   
-  for(p = proc; p < &proc[NPROC]; p++) {
-    char *pa = kalloc();
-    if(pa == 0)
-      panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
+  for(p = proc; p < &proc[NPROC]; p++) { // 遍历进程表中的每一个进程结构体
+    char *pa = kalloc(); // 分配一页物理内存作为内核栈
+    if(pa == 0) // 分配失败
+      panic("kalloc"); // 系统奔溃
+    uint64 va = KSTACK((int) (p - proc)); // 计算内核栈的虚拟地址
+    // 刚刚分配的物理页 pa 映射到内核页表 kpgtbl 的虚拟地址 va
+    // 映射大小为一页，并设置读写权限 
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }
