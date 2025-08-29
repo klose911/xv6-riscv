@@ -88,8 +88,29 @@ void            ramdiskintr(void);
 void            ramdiskrw(struct buf*);
 
 // kalloc.c
+/**
+ * @brief 分配一页物理内存
+ * 
+ * @return void* 指向分配的内存页的指针，返回0 代表分配失败（内存全满）
+ */
 void*           kalloc(void);
+
+/**
+ * @brief 释放一页物理内存
+ * 
+ * 当某个内存页不再被使用时，调用 kfree 可以将这页内存归还给内存分配器
+ * 
+ * @param pa 指向某页内存的开始处
+ * 
+ * 通常，kfree 只应被用于释放由 kalloc 分配出来的页面，确保内存管理的正确性和系统的稳定性
+ * 
+ */
 void            kfree(void *);
+
+/**
+ * @brief 内核物理内存分配器的初始化
+ * 
+ */
 void            kinit(void);
 
 // log.c
@@ -145,6 +166,13 @@ int             cpuid(void);
 void            exit(int);
 int             fork(void);
 int             growproc(int);
+
+/**
+ * @brief 映射进程的栈页
+ * 
+ * @param pagetable 进程的页表
+ * 
+ */
 void            proc_mapstacks(pagetable_t);
 pagetable_t     proc_pagetable(struct proc *);
 void            proc_freepagetable(pagetable_t, uint64);
@@ -293,10 +321,44 @@ void            uartputc(int);
 void            uartputc_sync(int);
 int             uartgetc(void);
 
-// vm.c
+// vm.c 虚拟内存管理
+/**
+ * @brief 初始化虚拟内存管理
+ * 
+ */
 void            kvminit(void);
+
+/**
+ * @brief 开启虚拟内存管理
+ * 
+ */
 void            kvminithart(void);
+
+/**
+ * @brief 在内核页表中建立虚拟地址到物理地址的映射关系
+ * 
+ * 将一段连续的虚拟地址空间映射到对应的物理内存区域，并设置相应的访问权限（如可读、可写、可执行等）
+ * 
+ * @param pagetable_t 内核页表指针
+ * @param va 虚拟地址起始位置
+ * @param pa 物理地址起始位置
+ * @param sz 映射区域的大小（以字节为单位）
+ * @param perm 访问权限标志
+ * 
+ */
 void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
+
+/**
+ * @brief 从虚拟地址 va 开始的一段地址区间创建页表项（PTE），使它们映射到从物理地址 pa 开始的物理内存区域
+ * 
+ * @param pagetable 页表指针
+ * @param va 虚拟地址起始位置
+ * @param pa 物理地址起始位置
+ * @param sz 映射区域的大小（以字节为单位）
+ * @param perm 访问权限标志
+ * 
+ * @return int 返回 0 表示成功，返回 -1 表示失败
+ */
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvmfirst(pagetable_t, uchar *, uint);
@@ -306,6 +368,17 @@ int             uvmcopy(pagetable_t, pagetable_t, uint64);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
+
+/**
+ * @brief 查找虚拟地址 va 对应的页表项, 如果不存在则分配新的页表页
+ * 
+ * @param pagetable 页表指针
+ * @param va 虚拟地址
+ * @param alloc 如果页表项不存在且 alloc 非零，则分配新的页表页
+ *
+ * @return pte_t* 返回 查找到或新创建的页表项指针
+ * 
+ */
 pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
