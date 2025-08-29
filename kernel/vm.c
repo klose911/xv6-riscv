@@ -68,7 +68,7 @@ kvmmake(void)
   // allocate and map a kernel stack for each process.
   proc_mapstacks(kpgtbl); // 为每个进程预先分配内核栈
   
-  return kpgtbl; // 返回内存页表指针（指向0级内存页表）
+  return kpgtbl; // 返回内存页表指针
 }
 
 // Initialize the one kernel_pagetable
@@ -81,15 +81,25 @@ kvminit(void)
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
+
+// 将硬件的页表寄存器切换到内核的页表。这意味着 CPU 后续的虚拟地址访问都将通过内核页表进行地址转换
+// 启用分页机制（paging）
+// 分页是现代操作系统内存管理的基础，通过它可以实现虚拟内存、内存保护等功能
 void
 kvminithart()
 {
   // wait for any previous writes to the page table memory to finish.
-  sfence_vma();
+  // 确保之前对页表的所有写操作（如新建或修改页表项）都已经对硬件可见，避免 CPU 仍然缓存着旧的虚拟地址到物理地址的映射
+  // 这是为了防止“脏数据”影响后续的地址转换
+  sfence_vma(); // 刷新TLB，使得所有虚拟内存映射无效
 
+  // 将内核页表的物理地址写入硬件的页表基址寄存器（SATP），正式切换到内核的页表
+  // 此后，CPU 的虚拟地址访问都会通过新的页表进行转换。
   w_satp(MAKE_SATP(kernel_pagetable));
 
   // flush stale entries from the TLB.
+  // 切换 SATP 后，TLB 里可能还残留着旧页表下的虚拟地址映射（TLB 缓存不会自动失效）
+  // 再次刷新 TLB，可以确保所有的地址转换都基于新的页表，彻底清除所有旧的映射，避免出现地址转换错误
   sfence_vma();
 }
 

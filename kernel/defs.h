@@ -327,6 +327,11 @@ int             uartgetc(void);
  * 
  */
 void            kvminit(void);
+
+/**
+ * @brief 开启虚拟内存管理
+ * 
+ */
 void            kvminithart(void);
 
 /**
