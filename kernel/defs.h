@@ -182,6 +182,11 @@ void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
+
+/**
+ * @brief 初始化进程表
+ * 
+ */
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
