@@ -17,3 +17,5 @@ user/usys.S
 .gdbinit
 .vscode
 compile
+compile_commands.json
+TAGS
