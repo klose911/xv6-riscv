@@ -13,7 +13,7 @@ struct proc proc[NPROC];
 struct proc *initproc;
 
 int nextpid = 1;
-struct spinlock pid_lock;
+struct spinlock pid_lock; // 用于分配进程 ID 的自旋锁
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -24,6 +24,13 @@ extern char trampoline[]; // trampoline.S
 // parents are not lost. helps obey the
 // memory model when using p->parent.
 // must be acquired before any p->lock.
+
+// wait 自旋锁有助于确保在父进程调用 wait() 等待子进程时，子进程唤醒父进程的操作不会丢失
+// 该锁还能帮助在访问或修改 p->parent（进程的父进程指针）时，遵守内存模型的要求
+// 避免并发访问带来的数据不一致问题，保证进程同步的正确性
+
+// 使用规范上，必须在获取任何单个进程的自旋锁（p->lock）之前，先获取这个全局锁
+// 这可以防止死锁和竞态条件，确保进程管理相关的操作安全有序地进行
 struct spinlock wait_lock;
 
 // Allocate a page for each process's kernel stack.
@@ -52,17 +59,21 @@ proc_mapstacks(pagetable_t kpgtbl)
 }
 
 // initialize the proc table.
+// 初始化进程表
 void
 procinit(void)
 {
   struct proc *p;
   
-  initlock(&pid_lock, "nextpid");
+  // 初始化全局锁 pid_lock 和 wait_lock
+  // 分别用于分配进程 ID 和进程等待队列的同步，确保多核环境下的线程安全
+  initlock(&pid_lock, "nextpid"); 
   initlock(&wait_lock, "wait_lock");
+  // 循环遍历进程表 proc 数组，初始化每一个进程结构体
   for(p = proc; p < &proc[NPROC]; p++) {
-      initlock(&p->lock, "proc");
-      p->state = UNUSED;
-      p->kstack = KSTACK((int) (p - proc));
+      initlock(&p->lock, "proc"); // 初始化该进程的自旋锁，用于保护进程自身的数据结构
+      p->state = UNUSED; // 该进程槽当前未被使用
+      p->kstack = KSTACK((int) (p - proc)); // 设置该进程的内核栈顶地址 (对应的页内存已经在之前分配)
   }
 }
 

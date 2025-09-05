@@ -182,6 +182,11 @@ void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
+
+/**
+ * @brief 初始化进程表
+ * 
+ */
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
@@ -308,10 +313,31 @@ int             fetchaddr(uint64, uint64*);
 void            syscall();
 
 // trap.c
-extern uint     ticks;
+extern uint     ticks; // 全局时钟 ticks 
+
+/**
+ * @brief 要用于陷入（trap）机制的相关设置
+ * 
+ * 陷入机制包括中断、异常和系统调用等事件的处理
+ * 
+ * 通常，trapinit 的作用是初始化与中断和异常处理相关的资源
+ * 例如，它会初始化自旋锁（如 tickslock），为后续的中断处理提供同步保障
+ * 这样可以确保在多核环境下，内核对共享资源（如时钟节拍计数器）的访问是安全的
+ * 
+ */
 void            trapinit(void);
+
+/**
+ * @brief 专门用于为每个硬件线程（hart，Hardware Thread）设置陷入（trap）相关的硬件状态
+ * 
+ * 它通常在每个 CPU 或硬件线程启动时被调用
+ * 该函数的主要作用是配置当前 hart 的陷入向量（trap vector）
+ * 即设置当发生中断、异常或系统调用时，CPU 应该跳转到哪个处理程序地址
+ * 这样可以确保每个处理器核心都能正确响应和处理各种异常和中断事件
+ * 
+ */
 void            trapinithart(void);
-extern struct spinlock tickslock;
+extern struct spinlock tickslock; // 全局时钟自旋锁
 void            usertrapret(void);
 
 // uart.c
