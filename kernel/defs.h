@@ -412,7 +412,21 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
 // plic.c
+/**
+ * @brief 指定的中断源设置优先级
+ * 
+ * 保证关键设备的中断不会被屏蔽，从而能够及时响应外部事件
+ * 
+ */
 void            plicinit(void);
+
+/**
+ * @brief 初始化当前硬件线程（hart）的 PLIC（平台级中断控制器）设置
+ * 
+ * 每个处理器核心都能正确响应 UART0 和 VIRTIO0 的中断请求，
+ * 并且不会屏蔽任何优先级的中断，这是多核系统中断初始化的关键步骤
+ * 
+ */
 void            plicinithart(void);
 int             plic_claim(void);
 void            plic_complete(int);
