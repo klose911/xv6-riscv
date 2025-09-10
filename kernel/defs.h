@@ -10,6 +10,13 @@ struct stat;
 struct superblock;
 
 // bio.c
+/**
+ * @brief 初始化磁盘块缓冲区
+ * 
+ * 所有缓冲区被组织成一个循环双向链表，并初始化了必要的锁机制
+ * 为后续的磁盘块缓存管理和 LRU 淘汰策略做好了准备
+ * 
+ */
 void            binit(void);
 struct buf*     bread(uint, uint);
 void            brelse(struct buf*);
