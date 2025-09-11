@@ -13,16 +13,33 @@
 #include "stat.h"
 #include "proc.h"
 
+/**
+ * @brief devsw 的结构体数组
+ * 
+ * 每个元素代表一个设备的操作集合（如读、写等函数指针）
+ * 
+ * 内核通过查找 devsw 数组，可以根据设备号快速定位并调用对应的设备驱动函数，实现统一的设备访问和管理
+ * 这样设计有助于扩展和维护不同类型的设备驱动，提高系统的灵活性和可移植性
+ * 
+ */
 struct devsw devsw[NDEV];
+
+/**
+ * @brief ftable 的全局结构体变量
+ * 
+ * 用于管理内核中的文件表
+ * 
+ */
 struct {
-  struct spinlock lock;
-  struct file file[NFILE];
+  struct spinlock lock; // 文件表的自旋锁
+  // 每个元素代表一个打开的文件，记录文件的状态、类型、引用计数、读写位置等信息
+  struct file file[NFILE]; // 文件结构体数组，包含 NFILE 个文件对象
 } ftable;
 
 void
 fileinit(void)
 {
-  initlock(&ftable.lock, "ftable");
+  initlock(&ftable.lock, "ftable"); // 初始化文件表的自旋锁
 }
 
 // Allocate a file structure.
