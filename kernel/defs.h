@@ -75,6 +75,13 @@ int             dirlink(struct inode*, char*, uint);
 struct inode*   dirlookup(struct inode*, char*, uint*);
 struct inode*   ialloc(uint, short);
 struct inode*   idup(struct inode*);
+
+/**
+ * @brief 初始化内核中的 inode 表
+ * 
+ * 为后续的 inode 分配、查找和同步访问做好了准备
+ * 
+ */
 void            iinit();
 void            ilock(struct inode*);
 void            iput(struct inode*);

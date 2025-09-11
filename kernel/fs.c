@@ -105,12 +105,12 @@ bfree(int dev, uint b)
 }
 
 // Inodes.
-//
+// 
 // An inode describes a single unnamed file.
 // The inode disk structure holds metadata: the file's type,
 // its size, the number of links referring to it, and the
 // list of blocks holding the file's content.
-//
+// 
 // The inodes are laid out sequentially on disk at block
 // sb.inodestart. Each inode has a number, indicating its
 // position on the disk.
@@ -173,9 +173,57 @@ bfree(int dev, uint b)
 // dev, and inum.  One must hold ip->lock in order to
 // read or write that inode's ip->valid, ip->size, ip->type, &c.
 
+// Inodes 
+// inode 是用于描述单个文件的核心数据结构，磁盘上的 inode 结构保存了文件的元数据
+// 包括文件类型、大小、引用计数（链接数）以及存放文件内容的磁盘块列表
+// 
+// 所有 inode 在磁盘上按顺序排列，每个 inode 都有唯一编号，标识其在磁盘上的位置
+// 
+// 内核会在内存中维护一个 inode 表，用于同步多进程对 inode 的访问
+// 内存中的 inode 除了磁盘上的信息，还包含一些仅用于内存管理的字段
+// 比如引用计数（ip->ref）和有效性标志（ip->valid）
+// 
+// inode 的生命周期分为几个阶段：
+// 分配：
+//      当 inode 的类型非零时表示已分配
+//      通过 ialloc() 分配 inode
+//      iput() 在引用和链接数都为零时释放 inode
+// 表引用：
+//      inode 表中的条目如果 ip->ref 为零则空闲，否则 ip->ref 记录有多少内存指针引用该 inode
+//      iget() 查找或创建表项并递增引用计数
+//      iput() 递减引用计数
+// 有效：
+//      只有当 ip->valid 为 1 时，inode 表项中的信息才是正确的
+//      ilock() 从磁盘读取 inode 并设置 valid，
+//      iput() 在引用计数为零时清除 valid
+// 加锁：
+//      文件系统代码在访问或修改 inode 及其内容前，必须先锁定该 inode
+
+// 典型的 inode 操作流程是：
+//   ip = iget(dev, inum) // 通过 iget() 获取 inode
+//   ilock(ip) // 对inode加锁
+//   ... examine and modify ip->xxx ... 
+//   iunlock(ip) // 对inode解锁
+//   iput(ip) // 释放inode 
+
+// ilock() 和 iget() 分离
+// 便于系统调用长期持有 inode 引用但只在需要时短暂加锁，减少死锁和竞争风险
+// iget() 增加引用计数，保证 inode 在表中不会被移除
+
+// 许多文件系统内部函数要求调用者已锁定相关 inode，以便实现多步原子操作
+
+// inode 表的分配由 itable.lock 自旋锁保护
+// 只有持有该锁才能安全操作 ip->ref、ip->dev 和 ip->inum
+// 除了这些字段外，其他 inode 字段由 ip->lock 互斥锁保护
+// 必须持有该锁才能读写 ip->valid、ip->size、ip->type 等信息
+
+/**
+ * @brief inode表
+ * 
+ */
 struct {
-  struct spinlock lock;
-  struct inode inode[NINODE];
+  struct spinlock lock; // inode 表的自旋锁
+  struct inode inode[NINODE]; // inode 表
 } itable;
 
 void
@@ -183,9 +231,11 @@ iinit()
 {
   int i = 0;
   
-  initlock(&itable.lock, "itable");
-  for(i = 0; i < NINODE; i++) {
-    initsleeplock(&itable.inode[i].lock, "inode");
+  // 只有持有该锁才能安全操作 ip->ref、ip->dev 和 ip->inum
+  initlock(&itable.lock, "itable"); // 初始化 inode 表的自旋锁
+  for(i = 0; i < NINODE; i++) { // 遍历 inode 表中的每一个 inode 条目 
+    // 必须持有该锁才能读写 ip->valid、ip->size、ip->type 等信息
+    initsleeplock(&itable.inode[i].lock, "inode"); // 为每个 inode 初始化互斥锁
   }
 }
 
