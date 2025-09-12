@@ -54,7 +54,7 @@
 
 // device feature bits
 
-// 义了一组 Virtio 块设备和环队列相关的功能特性标志，每个宏代表设备或驱动支持的某项能力：
+// 一组 Virtio 块设备和环队列相关的功能特性标志，每个宏代表设备或驱动支持的某项能力：
 #define VIRTIO_BLK_F_RO              5	/* Disk is read-only */ // 只读磁盘
 #define VIRTIO_BLK_F_SCSI            7	/* Supports scsi command passthru */ // 支持 SCSI 命令直通
 #define VIRTIO_BLK_F_CONFIG_WCE     11	/* Writeback mode available in config */ // 配置中可用的写回模式
