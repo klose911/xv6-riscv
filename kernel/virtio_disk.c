@@ -14,47 +14,77 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
-#include "virtio.h"
+#include "virtio.h" // virtio 驱动
 
 // the address of virtio mmio register r.
-#define R(r) ((volatile uint32 *)(VIRTIO0 + (r)))
 
+/**
+ * @brief 定义了一个宏 R(r)，用于简化对 Virtio MMIO（内存映射 I/O）设备寄存器的访问 
+ * 
+ * @param r 寄存器的偏移地址
+ * 
+ * VIRTIO0 是 Virtio 设备的基地址，通常是一个固定的物理地址
+ * (r) 是寄存器的偏移量，表示要访问 Virtio 设备的哪个寄存器
+ * VIRTIO0 + (r) 计算出目标寄存器的实际地址
+ * (volatile uint32 *) 将该地址转换为指向 32 位无符号整数的指针
+ * 加上 volatile 关键字，确保每次访问都直接操作硬件寄存器，不会被编译器优化或缓存 
+ */
+#define R(r) ((volatile uint32 *)(VIRTIO0 + (r))) // 可以方便地读写 Virtio 设备的各类寄存器，实现与设备的直接交互
+
+/**
+ * @brief 这段代码定义了一个静态结构体 disk，用于管理 Virtio 虚拟磁盘设备的所有核心数据
+ * 
+ * 它将设备的 DMA 描述符、队列、状态和操作信息集中在一起，方便驱动进行磁盘 I/O 操作和状态跟踪
+ * 
+ */
 static struct disk {
   // a set (not a ring) of DMA descriptors, with which the
   // driver tells the device where to read and write individual
   // disk operations. there are NUM descriptors.
   // most commands consist of a "chain" (a linked list) of a couple of
   // these descriptors.
-  struct virtq_desc *desc;
+
+  // 指向一组 DMA 描述符（不是环结构），驱动通过这些描述符告诉设备每次磁盘操作的数据读写位置
+  // 大多数命令由多个描述符链式连接组成
+  struct virtq_desc *desc; // DMA 描述符数组
 
   // a ring in which the driver writes descriptor numbers
   // that the driver would like the device to process.  it only
   // includes the head descriptor of each chain. the ring has
   // NUM elements.
-  struct virtq_avail *avail;
+
+  // 指向一个环结构，驱动在其中写入希望设备处理的描述符编号
+  // 仅包含每个描述符链的头部，环中有 NUM 个元素
+  struct virtq_avail *avail; // 可用描述符环
 
   // a ring in which the device writes descriptor numbers that
   // the device has finished processing (just the head of each chain).
   // there are NUM used ring entries.
-  struct virtq_used *used;
+
+  // 指向一个环结构，设备在其中写入已完成处理的描述符编号（仅头部）
+  // 环中有 NUM 个已用条目
+  struct virtq_used *used; // 已写入描述符环
 
   // our own book-keeping.
-  char free[NUM];  // is a descriptor free?
-  uint16 used_idx; // we've looked this far in used[2..NUM].
+  char free[NUM];  // is a descriptor free? 描述符是否空闲，1表示空闲，0表示已分配
+  // 驱动已处理的 used 队列索引，避免重复处理
+  uint16 used_idx; // we've looked this far in used[2..NUM]. 
 
   // track info about in-flight operations,
   // for use when completion interrupt arrives.
   // indexed by first descriptor index of chain.
+  // 跟踪正在进行的磁盘操作，便于中断到来时查找对应的缓冲区和状态
   struct {
-    struct buf *b;
-    char status;
-  } info[NUM];
+    struct buf *b; // 相关联的缓冲区指针
+    char status; // 设备操作的状态，0表示成功，其他值表示错误
+  } info[NUM]; 
 
   // disk command headers.
   // one-for-one with descriptors, for convenience.
-  struct virtio_blk_req ops[NUM];
   
-  struct spinlock vdisk_lock;
+  struct virtio_blk_req ops[NUM]; // 磁盘请求操作数组，与描述符一一对应，方便构造和管理请求
+  
+  struct spinlock vdisk_lock; // 自旋锁，保护该结构体的并发访问
   
 } disk;
 

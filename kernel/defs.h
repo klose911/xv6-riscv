@@ -10,6 +10,13 @@ struct stat;
 struct superblock;
 
 // bio.c
+/**
+ * @brief 初始化磁盘块缓冲区
+ * 
+ * 所有缓冲区被组织成一个循环双向链表，并初始化了必要的锁机制
+ * 为后续的磁盘块缓存管理和 LRU 淘汰策略做好了准备
+ * 
+ */
 void            binit(void);
 struct buf*     bread(uint, uint);
 void            brelse(struct buf*);
@@ -57,6 +64,11 @@ int             exec(char*, char**);
 struct file*    filealloc(void);
 void            fileclose(struct file*);
 struct file*    filedup(struct file*);
+
+/**
+ * @brief 初始化内核中的文件表
+ * 
+ */
 void            fileinit(void);
 int             fileread(struct file*, uint64, int n);
 int             filestat(struct file*, uint64 addr);
@@ -68,6 +80,13 @@ int             dirlink(struct inode*, char*, uint);
 struct inode*   dirlookup(struct inode*, char*, uint*);
 struct inode*   ialloc(uint, short);
 struct inode*   idup(struct inode*);
+
+/**
+ * @brief 初始化内核中的 inode 表
+ * 
+ * 为后续的 inode 分配、查找和同步访问做好了准备
+ * 
+ */
 void            iinit();
 void            ilock(struct inode*);
 void            iput(struct inode*);
@@ -412,7 +431,21 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
 // plic.c
+/**
+ * @brief 指定的中断源设置优先级
+ * 
+ * 保证关键设备的中断不会被屏蔽，从而能够及时响应外部事件
+ * 
+ */
 void            plicinit(void);
+
+/**
+ * @brief 初始化当前硬件线程（hart）的 PLIC（平台级中断控制器）设置
+ * 
+ * 每个处理器核心都能正确响应 UART0 和 VIRTIO0 的中断请求，
+ * 并且不会屏蔽任何优先级的中断，这是多核系统中断初始化的关键步骤
+ * 
+ */
 void            plicinithart(void);
 int             plic_claim(void);
 void            plic_complete(int);
