@@ -91,95 +91,102 @@ static struct disk {
 void
 virtio_disk_init(void)
 {
-  uint32 status = 0;
+  uint32 status = 0; 
 
-  initlock(&disk.vdisk_lock, "virtio_disk");
+  initlock(&disk.vdisk_lock, "virtio_disk"); // 初始化disk的自旋锁
 
   if(*R(VIRTIO_MMIO_MAGIC_VALUE) != 0x74726976 ||
      *R(VIRTIO_MMIO_VERSION) != 2 ||
      *R(VIRTIO_MMIO_DEVICE_ID) != 2 ||
      *R(VIRTIO_MMIO_VENDOR_ID) != 0x554d4551){
-    panic("could not find virtio disk");
+    panic("could not find virtio disk"); // 检查 Virtio 设备的标识符，确保找到正确的 Virtio 磁盘设备 
   }
   
   // reset device
-  *R(VIRTIO_MMIO_STATUS) = status;
+  *R(VIRTIO_MMIO_STATUS) = status; // 复位设备，清除状态寄存器
 
   // set ACKNOWLEDGE status bit
-  status |= VIRTIO_CONFIG_S_ACKNOWLEDGE;
-  *R(VIRTIO_MMIO_STATUS) = status;
+  status |= VIRTIO_CONFIG_S_ACKNOWLEDGE; // 设置 ACKNOWLEDGE 状态位，表示驱动已识别设备
+  *R(VIRTIO_MMIO_STATUS) = status; // 写回状态寄存器 
 
   // set DRIVER status bit
-  status |= VIRTIO_CONFIG_S_DRIVER;
-  *R(VIRTIO_MMIO_STATUS) = status;
+  status |= VIRTIO_CONFIG_S_DRIVER; // 设置 DRIVER 状态位，表示驱动已准备好与设备通信
+  *R(VIRTIO_MMIO_STATUS) = status;  
 
   // negotiate features
-  uint64 features = *R(VIRTIO_MMIO_DEVICE_FEATURES);
-  features &= ~(1 << VIRTIO_BLK_F_RO);
-  features &= ~(1 << VIRTIO_BLK_F_SCSI);
-  features &= ~(1 << VIRTIO_BLK_F_CONFIG_WCE);
-  features &= ~(1 << VIRTIO_BLK_F_MQ);
-  features &= ~(1 << VIRTIO_F_ANY_LAYOUT);
-  features &= ~(1 << VIRTIO_RING_F_EVENT_IDX);
-  features &= ~(1 << VIRTIO_RING_F_INDIRECT_DESC);
-  *R(VIRTIO_MMIO_DRIVER_FEATURES) = features;
+  uint64 features = *R(VIRTIO_MMIO_DEVICE_FEATURES); // 读取设备支持的功能特性 
+  features &= ~(1 << VIRTIO_BLK_F_RO); // 不支持只读磁盘，清除该位
+  features &= ~(1 << VIRTIO_BLK_F_SCSI); // 不支持 SCSI 命令直通，清除该位
+  features &= ~(1 << VIRTIO_BLK_F_CONFIG_WCE); // 不支持写回缓存，清除该位
+  features &= ~(1 << VIRTIO_BLK_F_MQ); // 不支持多队列，清除该位
+  features &= ~(1 << VIRTIO_F_ANY_LAYOUT); // 不支持任意布局，清除该位
+  features &= ~(1 << VIRTIO_RING_F_EVENT_IDX); // 不支持事件索引，清除该位
+  features &= ~(1 << VIRTIO_RING_F_INDIRECT_DESC); // 不支持间接描述符，清除该位
+  *R(VIRTIO_MMIO_DRIVER_FEATURES) = features; // 写回协商后的功能特性
 
   // tell device that feature negotiation is complete.
-  status |= VIRTIO_CONFIG_S_FEATURES_OK;
-  *R(VIRTIO_MMIO_STATUS) = status;
+  status |= VIRTIO_CONFIG_S_FEATURES_OK; // 设置 FEATURES_OK 状态位，表示功能协商完成
+  *R(VIRTIO_MMIO_STATUS) = status; 
 
   // re-read status to ensure FEATURES_OK is set.
-  status = *R(VIRTIO_MMIO_STATUS);
-  if(!(status & VIRTIO_CONFIG_S_FEATURES_OK))
-    panic("virtio disk FEATURES_OK unset");
+  status = *R(VIRTIO_MMIO_STATUS); // 重新读取状态寄存器，确保 FEATURES_OK 位被设置
+  if(!(status & VIRTIO_CONFIG_S_FEATURES_OK)) 
+    panic("virtio disk FEATURES_OK unset"); // 如果未设置，表示协商失败，内核奔溃
 
   // initialize queue 0.
-  *R(VIRTIO_MMIO_QUEUE_SEL) = 0;
+  *R(VIRTIO_MMIO_QUEUE_SEL) = 0; // 初始化选择队列 0
 
   // ensure queue 0 is not in use.
   if(*R(VIRTIO_MMIO_QUEUE_READY))
-    panic("virtio disk should not be ready");
+    panic("virtio disk should not be ready"); // 确保队列未被使用，READY 位应为 0
 
   // check maximum queue size.
-  uint32 max = *R(VIRTIO_MMIO_QUEUE_NUM_MAX);
-  if(max == 0)
+  uint32 max = *R(VIRTIO_MMIO_QUEUE_NUM_MAX); // 读取队列的最大支持大小
+  if(max == 0) // 不支持队列 内核奔溃
     panic("virtio disk has no queue 0");
-  if(max < NUM)
+  if(max < NUM) // 队列太小，无法满足驱动需求 内核奔溃
     panic("virtio disk max queue too short");
 
   // allocate and zero queue memory.
-  disk.desc = kalloc();
-  disk.avail = kalloc();
-  disk.used = kalloc();
+  disk.desc = kalloc(); // 分配一页内存用于 DMA 描述符
+  disk.avail = kalloc(); // 分配一页内存用于可用描述符环
+  disk.used = kalloc(); // 分配一页内存用于已完成描述符环 
   if(!disk.desc || !disk.avail || !disk.used)
-    panic("virtio disk kalloc");
-  memset(disk.desc, 0, PGSIZE);
+    panic("virtio disk kalloc"); // 任何一个分配失败，内核奔溃
+  // 清零分配的内存
+  memset(disk.desc, 0, PGSIZE); 
   memset(disk.avail, 0, PGSIZE);
   memset(disk.used, 0, PGSIZE);
 
   // set queue size.
-  *R(VIRTIO_MMIO_QUEUE_NUM) = NUM;
+  *R(VIRTIO_MMIO_QUEUE_NUM) = NUM; // 设置队列大小为 NUM
 
   // write physical addresses.
-  *R(VIRTIO_MMIO_QUEUE_DESC_LOW) = (uint64)disk.desc;
-  *R(VIRTIO_MMIO_QUEUE_DESC_HIGH) = (uint64)disk.desc >> 32;
-  *R(VIRTIO_MMIO_DRIVER_DESC_LOW) = (uint64)disk.avail;
-  *R(VIRTIO_MMIO_DRIVER_DESC_HIGH) = (uint64)disk.avail >> 32;
-  *R(VIRTIO_MMIO_DEVICE_DESC_LOW) = (uint64)disk.used;
-  *R(VIRTIO_MMIO_DEVICE_DESC_HIGH) = (uint64)disk.used >> 32;
+  *R(VIRTIO_MMIO_QUEUE_DESC_LOW) = (uint64)disk.desc; // 设置描述符表的低 32 位物理地址
+  *R(VIRTIO_MMIO_QUEUE_DESC_HIGH) = (uint64)disk.desc >> 32; // 设置描述符表的高 32 位物理地址
+  *R(VIRTIO_MMIO_DRIVER_DESC_LOW) = (uint64)disk.avail; // 设置可用环的低 32 位物理地址
+  *R(VIRTIO_MMIO_DRIVER_DESC_HIGH) = (uint64)disk.avail >> 32; // 设置可用环的高 32 位物理地址
+  *R(VIRTIO_MMIO_DEVICE_DESC_LOW) = (uint64)disk.used; // 设置已用环的低 32 位物理地址
+  *R(VIRTIO_MMIO_DEVICE_DESC_HIGH) = (uint64)disk.used >> 32; // 设置已用环的高 32 位物理地址
 
   // queue is ready.
-  *R(VIRTIO_MMIO_QUEUE_READY) = 0x1;
+  *R(VIRTIO_MMIO_QUEUE_READY) = 0x1; // 设置队列为就绪状态
 
   // all NUM descriptors start out unused.
+  // 遍历描述符表，初始化所有描述符为空闲状态
   for(int i = 0; i < NUM; i++)
     disk.free[i] = 1;
 
   // tell device we're completely ready.
-  status |= VIRTIO_CONFIG_S_DRIVER_OK;
+  status |= VIRTIO_CONFIG_S_DRIVER_OK; // 设置 DRIVER_OK 状态位，表示驱动已完成初始化，设备可以开始工作
   *R(VIRTIO_MMIO_STATUS) = status;
 
   // plic.c and trap.c arrange for interrupts from VIRTIO0_IRQ.
+  // plic.c 和 trap.c 这两个文件负责配置和管理来自 VIRTIO0_IRQ（Virtio 虚拟磁盘设备中断号）的中断
+  // 具体来说，plic.c 负责在平台级中断控制器（PLIC）中使能和优先级设置该设备的中断
+  // 而 trap.c 负责在内核中处理中断请求
+  // 这样确保当 Virtio 设备有事件发生时，内核能够及时响应并进行相应的 I/O 操作
+  // 这种分工保证了设备中断能够被正确捕获和处理，是驱动与硬件交互的关键环节
 }
 
 // find a free descriptor, mark it non-free, return its index.
