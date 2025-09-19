@@ -357,6 +357,18 @@ void            trapinit(void);
  */
 void            trapinithart(void);
 extern struct spinlock tickslock; // 全局时钟自旋锁
+
+/**
+ * @brief 用户态中断在内核态处理完毕后，返回用户态
+ * 
+ * 为最后调用 trampoline.S 中的 userret 函数做准备 
+ * 1. 设置陷入向量寄存器 stvec，指向 trampoline.S 中的 uservec 入口 
+ * 2. 设置当前进程的 trapframe 结构体中的关键字段，供 uservec 使用
+ * 3. 设置 sstatus 和 sepc 寄存器，确保从内核态返回用户态时的正确状态
+ * 4. 跳转到 trampoline.S 中的 userret 入口，完成从内核态返回用户态的切换
+ * 
+ * @note 该函数必须在关闭中断的情况下调用 
+ */
 void            usertrapret(void);
 
 // uart.c
@@ -451,6 +463,14 @@ int             plic_claim(void);
 void            plic_complete(int);
 
 // virtio_disk.c
+
+/**
+ * @brief 初始化 Virtio 磁盘设备 
+ * 
+ * 该函数设置 Virtio 设备的 DMA 描述符、队列和状态
+ * 并确保设备准备好进行磁盘 I/O 操作
+ * 
+ */
 void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
