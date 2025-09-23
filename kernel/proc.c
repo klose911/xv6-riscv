@@ -6,15 +6,23 @@
 #include "proc.h"
 #include "defs.h"
 
-struct cpu cpus[NCPU];
+struct cpu cpus[NCPU]; // cpu状态数组
 
-struct proc proc[NPROC];
+struct proc proc[NPROC]; // 进程数组
 
-struct proc *initproc;
+struct proc *initproc; // init进程
 
-int nextpid = 1;
+int nextpid = 1; // 累计进程号
 struct spinlock pid_lock; // 用于分配进程 ID 的自旋锁
 
+/**
+ * @brief forkret 函数的声明
+ * 
+ * 通常用于新进程（由 fork 创建）第一次被调度运行时的入口点
+ * 内核会将新进程的上下文（context）设置为从 forkret 开始执行
+ * forkret 负责完成最后的内核初始化步骤，然后让进程安全地切换回用户空间，开始正常运行用户代码
+ * 
+ */
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
@@ -108,6 +116,13 @@ myproc(void)
   return p;
 }
 
+/**
+ * @brief 初始化某个进程的 PID
+ * 
+ * @return int 返回新分配的进程 ID 
+ * 
+ * 注意：该函数在分配 PID 时会获取 pid_lock 全局自旋锁，确保在多核环境下的线程安全
+ */
 int
 allocpid()
 {
@@ -125,45 +140,59 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
+
+// 该函数会在进程表中查找一个状态为 UNUSED（未使用）的进程结构体 proc
+// 如果找到空闲的进程项，就会初始化它，使其具备在内核中运行所需的状态
+// 并在返回时持有该进程的锁（p->lock）
+// 如果没有空闲进程项，或者内存分配失败，则返回 0（NULL 指针）
+
+/**
+ * @brief 分配一个新的进程结构体
+ * 
+ * @return struct proc* 成功返回指向新进程结构体的指针，失败返回 0 
+ * 
+ */
 static struct proc*
 allocproc(void)
 {
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
+    acquire(&p->lock); // 获取该进程的自旋锁，防止并发访问
     if(p->state == UNUSED) {
       goto found;
     } else {
-      release(&p->lock);
+      release(&p->lock); // 无法找到空闲进程，释放锁继续查找
     }
   }
   return 0;
 
+  // 找到空闲进程，进行初始化
 found:
-  p->pid = allocpid();
-  p->state = USED;
+  p->pid = allocpid(); // 分配唯一的进程 ID
+  p->state = USED; // 将进程状态设置为 USED（已使用）
 
-  // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
+  // Allocate a trapframe page. 为该进程分配一个 trapframe 页面
+  if((p->trapframe = (struct trapframe *)kalloc()) == 0){ // 分配失败
+    freeproc(p); // 释放该进程结构体
+    release(&p->lock); // 释放该进程的自旋锁
     return 0;
   }
 
   // An empty user page table.
-  p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
-    freeproc(p);
-    release(&p->lock);
+  p->pagetable = proc_pagetable(p); // 为进程分配一个空的用户级别内存页表
+  if(p->pagetable == 0){ // 分配页表失败
+    freeproc(p); // 释放该进程结构体
+    release(&p->lock); // 释放该进程的自旋锁
     return 0;
   }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
-  memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
-  p->context.sp = p->kstack + PGSIZE;
+  // 新进程的上下文会被设置为从 forkret 函数开始执行，forkret 最终会让进程返回到用户空间
+  memset(&p->context, 0, sizeof(p->context)); // 将进程的 context 结构体清零，确保所有寄存器初始值为 0，避免遗留脏数据
+  p->context.ra = (uint64)forkret; // 设置返回地址寄存器（ra），让进程被调度运行时，从 forkret 函数入口开始执行
+  p->context.sp = p->kstack + PGSIZE; // 设置栈指针（sp）为该进程内核栈的栈顶，保证内核代码运行时有独立的栈空间
 
   return p;
 }
@@ -171,14 +200,27 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+
+// 调用 freeproc 时，必须已经持有该进程的锁（p->lock）
+// 以保证在多核或多线程环境下的并发安全，防止资源被其他线程同时访问或修改
+
+/**
+ * @brief 释放一个进程结构体（proc）以及与其相关联的所有资源，包括用户空间分配的内存页等
+ * 
+ * @param p 进程结构体指针 
+ * 
+ * @return void 无返回 
+ * 
+ */
 static void
 freeproc(struct proc *p)
 {
   if(p->trapframe)
-    kfree((void*)p->trapframe);
-  p->trapframe = 0;
+    kfree((void*)p->trapframe); // 释放该进程的 trapframe 页面
+  p->trapframe = 0; 
   if(p->pagetable)
-    proc_freepagetable(p->pagetable, p->sz);
+    proc_freepagetable(p->pagetable, p->sz); // 释放该进程的页表及其映射的物理内存
+  // 释放完毕后，将相关指针和字段清零，防止悬挂指针和数据污染
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -192,33 +234,47 @@ freeproc(struct proc *p)
 
 // Create a user page table for a given process, with no user memory,
 // but with trampoline and trapframe pages.
+
+// 为指定进程创建一个用户页表
+// 新页表中不包含任何用户内存（即用户代码和数据还未映射）
+// 但会包含 trampoline（跳板代码）和 trapframe（陷入帧）这两个特殊页面的映射
 pagetable_t
 proc_pagetable(struct proc *p)
 {
   pagetable_t pagetable;
 
   // An empty page table.
-  pagetable = uvmcreate();
-  if(pagetable == 0)
+  pagetable = uvmcreate(); // 创建空的用户进程页表
+  if(pagetable == 0) // 内存不够，返回 0 
     return 0;
 
   // map the trampoline code (for system call return)
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
   // to/from user space, so not PTE_U.
+  // trampoline 代码被映射到用户虚拟地址空间的最高地址处 
+  // 但实际上只有内核（supervisor）会使用它，用户态无法直接访问（系统调用返回时候，会调用这部分代码）
+  // 因此映射时不设置 PTE_U（用户可访问）权限
+
+  // 将 trampoline 代码的物理地址映射到虚拟地址 TRAMPOLINE
+  // 大小为一页（PGSIZE），权限为只读和可执行（PTE_R | PTE_X）
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
-              (uint64)trampoline, PTE_R | PTE_X) < 0){
-    uvmfree(pagetable, 0);
+              (uint64)trampoline, PTE_R | PTE_X) < 0){ 
+    uvmfree(pagetable, 0); // 映射失败，释放页表，返回 0 
     return 0;
   }
 
   // map the trapframe page just below the trampoline page, for
   // trampoline.S.
+  // 映射 trapframe（陷入帧）页面，为 trampoline.S（跳板汇编代码）提供支持 
+
+  // 将当前进程的 trapframe 物理地址映射到虚拟地址 TRAPFRAME
+  // 大小为一页（PGSIZE），权限为只读和可写（PTE_R | PTE_W）
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
-              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
-    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-    uvmfree(pagetable, 0);
-    return 0;
+              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){ // 映射失败
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0); // 解除 TRAMPOLINE 的映射
+    uvmfree(pagetable, 0); // 释放内存页表
+    return 0; 
   }
 
   return pagetable;
@@ -226,12 +282,15 @@ proc_pagetable(struct proc *p)
 
 // Free a process's page table, and free the
 // physical memory it refers to.
+// 释放进程相关的页表及其映射的物理内存 
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
-  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-  uvmunmap(pagetable, TRAPFRAME, 1, 0);
-  uvmfree(pagetable, sz);
+  // 解除页表中 TRAMPOLINE 虚拟地址对应的一个页的映射，但不释放物理内存（最后一个参数为 0）
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0); // TRAMPOLINE 通常用于用户态和内核态切换的跳板代码
+  // 解除页表中 TRAPFRAME 虚拟地址对应的一个页的映射，但不释放物理内存
+  uvmunmap(pagetable, TRAPFRAME, 1, 0); // TRAPFRAME 用于保存进程在发生中断或系统调用时的寄存器状态
+  uvmfree(pagetable, sz); // 释放进程对应的内存页表及其映射的物理内存
 }
 
 // a user program that calls exec("/init")
@@ -253,24 +312,31 @@ userinit(void)
 {
   struct proc *p;
 
-  p = allocproc();
+  p = allocproc(); // 创建第一个进程
   initproc = p;
   
   // allocate one user page and copy initcode's instructions
   // and data into it.
+  // 分配一页用户内存，并将 initcode 的指令和数据复制到这页内存中
   uvmfirst(p->pagetable, initcode, sizeof(initcode));
-  p->sz = PGSIZE;
+  p->sz = PGSIZE; // 设置进程的内存大小为一页（PGSIZE）
 
   // prepare for the very first "return" from kernel to user.
+  // 为进程的第一次从内核态“返回”到用户态做准备
+
+  // 设置用户程序计数器（epc）为 0，表示用户程序将从虚拟地址 0 开始执行
+  // 对于初始进程，这通常对应 initcode 的入口地址。
   p->trapframe->epc = 0;      // user program counter
+  // 设置用户栈指针（sp）为一页的顶部（PGSIZE），即用户栈从虚拟地址 0 到 PGSIZE，栈顶在 PGSIZE 处
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
-  safestrcpy(p->name, "initcode", sizeof(p->name));
-  p->cwd = namei("/");
+  // 将字符串 "initcode" 安全地复制到进程结构体 p 的 name 字段中，最多复制 sizeof(p->name) 个字节
+  safestrcpy(p->name, "initcode", sizeof(p->name)); 
+  p->cwd = namei("/"); // 进程 p 设置当前工作目录（cwd）为根目录
 
-  p->state = RUNNABLE;
+  p->state = RUNNABLE; // 设置初始进程为可执行
 
-  release(&p->lock);
+  release(&p->lock); // 释放初始进程的锁
 }
 
 // Grow or shrink user memory by n bytes.
@@ -539,26 +605,34 @@ yield(void)
 
 // A fork child's very first scheduling by scheduler()
 // will swtch to forkret.
+
+// 新创建的子进程（通过 fork 产生）在被调度器（scheduler）第一次调度运行时
+// 会切换（switch）到 forkret 函数执行
+// 保证了文件系统初始化只会被执行一次，并且在多核环境下不会出现竞态条件
 void
 forkret(void)
 {
+  // 声明并初始化一个静态变量 first，用于是否已经初始化
+  // 静态变量只在本函数内可见，并且在多次调用间保持其值
   static int first = 1;
 
   // Still holding p->lock from scheduler.
-  release(&myproc()->lock);
+  release(&myproc()->lock); // 释放当前进程的锁，此时已经不再需要保护进程结构体的数据
 
-  if (first) {
+  if (first) { 
     // File system initialization must be run in the context of a
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
-    fsinit(ROOTDEV);
 
-    first = 0;
+    // 必须在普通进程上下文中执行（如可能调用 sleep），不能在 main() 里直接运行
+    fsinit(ROOTDEV); // 调用文件系统初始化函数，通常会挂载根文件系统等
+
+    first = 0; // 设置标志，表示文件系统已经初始化
     // ensure other cores see first=0.
-    __sync_synchronize();
+    __sync_synchronize(); // 内存屏障，确保 first=0 的写操作对所有 CPU 核心可见，防止多核下的可见性问题
   }
 
-  usertrapret();
+  usertrapret(); // 让进程返回用户态，继续正常执行用户代码
 }
 
 // Atomically release lock and sleep on chan.

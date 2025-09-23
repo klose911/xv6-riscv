@@ -238,6 +238,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
+
+// 从虚拟地址 va 开始的 npages 页内存映射
+// va 必须是页对齐的，并且这些映射必须已经存在
+// 如果 do_free 非零，则释放对应的物理内存页面
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
@@ -278,17 +282,27 @@ uvmcreate()
 // Load the user initcode into address 0 of pagetable,
 // for the very first process.
 // sz must be less than a page.
+
+// 将用户初始代码（initcode）加载到页表的虚拟地址 0 处，这是系统启动时第一个用户进程的初始化步骤
+// 只有第一个用户进程（通常是 init 或 initcode）会这样做
+// sz（代码大小）必须小于一页（page），否则无法完整加载到单个页面中
 void
 uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
 {
   char *mem;
 
-  if(sz >= PGSIZE)
+  if(sz >= PGSIZE) // 复制的代码大小超过一页，直接奔溃
     panic("uvmfirst: more than a page");
-  mem = kalloc();
-  memset(mem, 0, PGSIZE);
+  mem = kalloc(); // 分配一页物理内存
+  memset(mem, 0, PGSIZE); // 清空内存
+
+  // 内存页表中加入映射项：
+  // 虚拟地址起始为 0，映射长度为一页（PGSIZE）
+  // 物理地址为 mem 指向的内存区域（强制转换为 uint64 类型）
+  // 权限标志为 PTE_W | PTE_R | PTE_X | PTE_U
+  //     表示该页可写（W）、可读（R）、可执行（X），并且用户态（U）可访问
   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
-  memmove(mem, src, sz);
+  memmove(mem, src, sz); // 移动代码到内存
 }
 
 // Allocate PTEs and physical memory to grow process from oldsz to
