@@ -387,6 +387,11 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+
+// 该函数接收父进程的页表，并将父进程的内存内容复制到子进程的页表中
+// 复制过程包括页表结构本身以及实际的物理内存内容，确保子进程拥有与父进程相同的用户空间数据
+// 如果复制成功，函数返回 0；如果失败（如内存分配不足），返回 -1
+// 一旦发生失败，函数会自动释放在复制过程中已经分配的所有内存页，避免内存泄漏
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {

@@ -88,6 +88,8 @@ procinit(void)
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
+
+// 中断必须关闭，防止进程被挪到另一个不同的cpu上
 int
 cpuid()
 {
@@ -97,22 +99,25 @@ cpuid()
 
 // Return this CPU's cpu struct.
 // Interrupts must be disabled.
+
+// 中断必须关闭
 struct cpu*
 mycpu(void)
 {
-  int id = cpuid();
-  struct cpu *c = &cpus[id];
+  int id = cpuid(); // 获取当前cpu id
+  struct cpu *c = &cpus[id]; // 查询当前cpu对应的结构体指针
   return c;
 }
 
 // Return the current struct proc *, or zero if none.
+// 返回当前运行的进程指针，如果不存在，返回 0 （NULL）
 struct proc*
 myproc(void)
 {
-  push_off();
-  struct cpu *c = mycpu();
-  struct proc *p = c->proc;
-  pop_off();
+  push_off(); // 关闭中断并增加嵌套深度
+  struct cpu *c = mycpu(); // 获得当前cpu指针
+  struct proc *p = c->proc; // 从当前cpu结构获取当前进程
+  pop_off(); // 打开中断并减少嵌套深度
   return p;
 }
 
@@ -361,20 +366,23 @@ growproc(int n)
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
+// 创建一个新进程，并复制父进程的相关内容（如内存页表、寄存器、文件描述符等），实现父子进程的分离
+// 其次，它会设置子进程的内核栈，使得当子进程第一次被调度运行时，看起来就像是从 fork() 系统调用返回一样
 int
 fork(void)
 {
   int i, pid;
   struct proc *np;
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // 获得当前cpu正在运行的进程
 
   // Allocate process.
-  if((np = allocproc()) == 0){
-    return -1;
+  if((np = allocproc()) == 0){ // 创建一个新的进程失败
+    return -1; // 内核奔溃，返回 -1 
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  // 复制内存父进程的内存页表到子进程
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){ // 复制失败，释放内存，返回 -1 
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -382,32 +390,36 @@ fork(void)
   np->sz = p->sz;
 
   // copy saved user registers.
+  // 复制父进程 trap帧 （父进程保存的寄存器）
   *(np->trapframe) = *(p->trapframe);
 
   // Cause fork to return 0 in the child.
-  np->trapframe->a0 = 0;
+  // 让 fork() 系统调用在子进程中返回 0  
+  // 根据 RISC-V 调用约定，a0 用于存放函数返回值。
+  np->trapframe->a0 = 0; // 将子进程 trapframe（陷入帧）中的 a0 寄存器设置为 0
 
   // increment reference counts on open file descriptors.
+  // 遍历父进程打开的文件，增加子进程对这些文件的引用计数
   for(i = 0; i < NOFILE; i++)
-    if(p->ofile[i])
-      np->ofile[i] = filedup(p->ofile[i]);
-  np->cwd = idup(p->cwd);
+    if(p->ofile[i]) // 父进程引用这个文件
+      np->ofile[i] = filedup(p->ofile[i]); 
+  np->cwd = idup(p->cwd); // 设置子进程的当前目录为父进程的当前目录，并把当前目录的inode引用计数 + 1 
 
-  safestrcpy(np->name, p->name, sizeof(p->name));
+  safestrcpy(np->name, p->name, sizeof(p->name)); // 安全拷贝进程名字
 
   pid = np->pid;
 
-  release(&np->lock);
+  release(&np->lock); // 释放allocate时候获取到的子进程的自旋锁
 
-  acquire(&wait_lock);
-  np->parent = p;
+  acquire(&wait_lock); 
+  np->parent = p; //设置子进程的父进程ID，注意：需要对wait加锁，保证并发
   release(&wait_lock);
 
   acquire(&np->lock);
-  np->state = RUNNABLE;
+  np->state = RUNNABLE; //设置子进程的状态为可执行，注意：需要对子进程加锁，保证并发
   release(&np->lock);
 
-  return pid;
+  return pid; // 父进程调用fork返回 子进程的id
 }
 
 // Pass p's abandoned children to init.

@@ -193,8 +193,31 @@ void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
 
 // proc.c
+
+/**
+ * @brief 获取当前正在运行代码的 CPU（或硬件线程，hart）的编号（ID）
+ * 
+ * 在多核或多处理器系统中，每个 CPU 都有唯一的编号，内核通过 cpuid() 可以识别当前代码运行在哪个 CPU 上
+ * 
+ * @return int 当前正在运行代码的 CPU 的编号（ID）
+ * 
+ */
 int             cpuid(void);
 void            exit(int);
+
+/**
+ * @brief 建一个当前进程的子进程
+ * 
+ * 调用 fork() 后，系统会复制当前进程的大部分资源（如内存空间、文件描述符等），生成一个新的子进程
+ * 
+ * 
+ * @return int  在父进程中，fork() 返回新创建子进程的进程 ID（PID）
+ *              在子进程中，fork() 返回 0
+ *              如果创建失败，返回 -1
+ * 
+ * 父进程和子进程的执行几乎完全独立
+ * 
+ */
 int             fork(void);
 int             growproc(int);
 
@@ -234,8 +257,30 @@ void            proc_freepagetable(pagetable_t, uint64);
 int             kill(int);
 int             killed(struct proc*);
 void            setkilled(struct proc*);
+
+/**
+ * @brief 获取 当前正在运行代码的 CPU（或硬件线程，hart）对应的 cpu 结构体指针
+ * 
+ * 多核或多处理器系统中，内核需要区分和管理每个 CPU 的本地状态（如当前运行的进程、调度信息、中断嵌套等）
+ * 通过调用 mycpu()，内核代码可以方便地获取当前 CPU 的本地数据结构，实现对多核环境下各自资源的隔离和管理
+ * 
+ * @return struct cpu* 当前运行的CPU 结构体指针
+ * 
+ */
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
+
+/**
+ * @brief 获取当前 CPU 正在运行的进程的指针
+ * 
+ * @return struct proc*   指向当前 CPU 正在运行进程结构体的指针
+ *                        如当前CPU没有正在运行的进程，返回 0 (NULL)
+ * 
+ * 在多核或多线程操作系统中，每个 CPU（或硬件线程）都可能在运行不同的进程
+ * 通过调用 myproc()，内核代码可以方便地获取当前上下文下的进程结构体
+ * 进而访问或修改该进程的状态、内存、文件等信息
+ * 
+ */
 struct proc*    myproc();
 
 /**
@@ -512,6 +557,20 @@ pagetable_t     uvmcreate(void);
 void            uvmfirst(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64, int);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
+
+/**
+ * @brief 将一个进程的用户虚拟内存空间（包括页表和物理页内容）复制到另一个进程的页表中
+ * 
+ * @param pagetable_t：源页表，表示要复制的原进程的页表
+ * @param pagetable_t：目标页表，表示新进程的页表
+ * @param uint64：要复制的虚拟地址空间的大小（通常为字节数）
+ * 
+ * @return int 回值为 0 表示复制成功，非 0 表示失败（如内存不足等)
+ * 
+ * 常用于实现 fork() 系统调用时子进程对父进程内存空间的复制
+ * 保证了父子进程拥有独立但内容相同的用户空间，是多进程操作系统实现进程隔离和资源复制的关键步骤
+ * 
+ */
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
 
 /**
