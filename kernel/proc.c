@@ -424,15 +424,23 @@ fork(void)
 
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
+/**
+ * @brief 终止某个进程之前，将它的所有子进程重新分配，作为 init 进程的子进程
+ * 
+ * @param p 进程结构体指针
+ * 
+ * @note 这个函数调用者必须持有 wait_lock 全局自旋锁
+ * 
+ */
 void
 reparent(struct proc *p)
 {
   struct proc *pp;
 
-  for(pp = proc; pp < &proc[NPROC]; pp++){
-    if(pp->parent == p){
-      pp->parent = initproc;
-      wakeup(initproc);
+  for(pp = proc; pp < &proc[NPROC]; pp++){ // 遍历进程表
+    if(pp->parent == p){ // 是否是进程p的子进程
+      pp->parent = initproc; // 修改这个进程的父进程为 init 进程
+      wakeup(initproc); // 唤醒所有等待“initproc”资源的进程
     }
   }
 }
@@ -440,46 +448,53 @@ reparent(struct proc *p)
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
+
+// 当进程调用 exit 时，会立即终止当前进程的执行，且该函数不会返回到调用者
+// 被终止的进程会进入 ZOMBIE（僵尸）状态，表示进程已经退出，但其父进程还没有回收它的资源（如退出码等）
+// 只有当父进程调用 wait()，回收了子进程的资源后，僵尸进程才会被系统彻底清理
 void
 exit(int status)
 {
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // 获取当前CPU的当前运行的进程
 
-  if(p == initproc)
+  if(p == initproc) // 无法停止 init 进程，内核奔溃
     panic("init exiting");
 
   // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
-      struct file *f = p->ofile[fd];
-      fileclose(f);
-      p->ofile[fd] = 0;
+  // 关闭所有当前进程打开的文件
+  for(int fd = 0; fd < NOFILE; fd++){ // 遍历进程所有的文件描述符
+    if(p->ofile[fd]){ // 文件被打开
+      struct file *f = p->ofile[fd]; // 根据文件描述符获得文件指针
+      fileclose(f);  // 关闭文件
+      p->ofile[fd] = 0; // 文件描述符对应的文件指针置为 NULL 
     }
   }
 
   begin_op();
-  iput(p->cwd);
+  iput(p->cwd); // 进程工作目录的inode引用计数 - 1 
   end_op();
-  p->cwd = 0;
+  p->cwd = 0; // 设置进程工作目录为 NULL 
 
   acquire(&wait_lock);
 
   // Give any children to init.
-  reparent(p);
+  reparent(p); // 重新设置所有子进程的父进程为 initproc 
 
   // Parent might be sleeping in wait().
-  wakeup(p->parent);
+  wakeup(p->parent); // 唤醒所有等待“当前进程的父进程”的进程
   
-  acquire(&p->lock);
+  // 注意：这个获取的进程锁，只有在wait调用的时候，所有资源清理完才会释放
+  // 因此这里并不会调用 release 
+  acquire(&p->lock); // 获取当前进程的进程锁
 
-  p->xstate = status;
-  p->state = ZOMBIE;
+  p->xstate = status; // 设置返回的状态码
+  p->state = ZOMBIE; // 设置状态为 ZOMBIE, 等待init进程清理
 
-  release(&wait_lock);
+  release(&wait_lock); // 释放wait_lock 
 
   // Jump into the scheduler, never to return.
-  sched();
-  panic("zombie exit");
+  sched(); // 进入进程调度器，不再返回
+  panic("zombie exit"); // 如果返回，内核奔溃
 }
 
 // Wait for a child process to exit and return its pid.
@@ -680,18 +695,23 @@ sleep(void *chan, struct spinlock *lk)
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
+
+// 唤醒所有在 chan（某个等待条件或资源）上睡眠的进程
+// 也就是说，凡是因为等待 chan 而进入睡眠状态的进程，都会被唤醒，变为可运行状态
+// 必须在没有持有任何进程锁（p->lock）的情况下调用此函数
+// 这样可以避免死锁，因为这个函数会尝试获取p->lock 
 void
 wakeup(void *chan)
 {
   struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++) {
-    if(p != myproc()){
-      acquire(&p->lock);
+  for(p = proc; p < &proc[NPROC]; p++) { // 遍历所有进程
+    if(p != myproc()){ // 非当前进程
+      acquire(&p->lock); // 修改某个进程状态，需要获取这个进程对应的进程锁
       if(p->state == SLEEPING && p->chan == chan) {
-        p->state = RUNNABLE;
+        p->state = RUNNABLE; // 修改符合条件的进程运行状态为 “可执行”
       }
-      release(&p->lock);
+      release(&p->lock); // 释放进程锁
     }
   }
 }

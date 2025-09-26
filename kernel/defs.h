@@ -89,6 +89,16 @@ struct inode*   idup(struct inode*);
  */
 void            iinit();
 void            ilock(struct inode*);
+
+/**
+ * @brief 释放或递减指定 inode 的引用计数
+ * 
+ * 当文件系统中的某个 inode 不再被使用时，调用 iput 可以减少其引用次数
+ * 如果引用次数降为零，则会进一步释放与该 inode 相关的资源（如缓存、内存等）
+ * 
+ * @param ip 释放或递减指定 inode 的引用计数
+ * 
+ */
 void            iput(struct inode*);
 void            iunlock(struct inode*);
 void            iunlockput(struct inode*);
@@ -203,6 +213,15 @@ void            printfinit(void);
  * 
  */
 int             cpuid(void);
+
+/**
+ * @brief 终止当前进程的执行
+ * 
+ * 调用 exit 后，操作系统会进行资源回收（如关闭文件、释放内存等），并将进程状态设置为“已终止”，等待父进程处理
+ * 
+ * @param status 进程的退出状态码，父进程可以通过该状态码获知子进程的退出原因
+ * 
+ */
 void            exit(int);
 
 /**
@@ -268,7 +287,6 @@ void            setkilled(struct proc*);
  * 
  */
 struct cpu*     mycpu(void);
-struct cpu*     getmycpu(void);
 
 /**
  * @brief 获取当前 CPU 正在运行的进程的指针
@@ -301,6 +319,17 @@ void            sleep(void*, struct spinlock*);
  */
 void            userinit(void);
 int             wait(uint64);
+
+/**
+ * @brief 唤醒所有在 chan（某个等待条件或资源）上睡眠的进程
+ * 
+ * 在内核中，进程可能因为等待某个事件（如 I/O 完成、资源可用等）而主动进入睡眠状态
+ * wakeup 函数的作用就是通知所有等待某个特定条件或资源的进程，让它们从睡眠状态变为可运行状态（RUNNABLE）
+ * 以便调度器可以重新调度它们执行
+ * 
+ * @param chan 某个等待条件或资源
+ * 
+ */
 void            wakeup(void*);
 void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
