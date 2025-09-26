@@ -89,11 +89,33 @@ struct inode*   idup(struct inode*);
  */
 void            iinit();
 void            ilock(struct inode*);
+
+/**
+ * @brief 释放或递减指定 inode 的引用计数
+ * 
+ * 当文件系统中的某个 inode 不再被使用时，调用 iput 可以减少其引用次数
+ * 如果引用次数降为零，则会进一步释放与该 inode 相关的资源（如缓存、内存等）
+ * 
+ * @param ip 释放或递减指定 inode 的引用计数
+ * 
+ */
 void            iput(struct inode*);
 void            iunlock(struct inode*);
 void            iunlockput(struct inode*);
 void            iupdate(struct inode*);
 int             namecmp(const char*, const char*);
+/**
+ * @brief 根据给定的路径名查找并返回对应的 inode 结构体指针
+ * 
+ * inode 是文件系统中用于描述文件元数据（如类型、大小、权限、数据块位置等）的核心结构
+ * 
+ * @param name 给定的路径名
+ * 
+ * @return struct inode* 返回对应的 inode 结构体指针 
+ * 
+ * 通过 namei，内核或文件系统模块可以根据路径快速定位到具体的文件或目录对象，进而进行后续的读写、权限检查等操作
+ * 
+ */
 struct inode*   namei(char*);
 struct inode*   nameiparent(char*, char*);
 int             readi(struct inode*, int, uint64, uint, uint);
@@ -181,8 +203,40 @@ void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
 
 // proc.c
+
+/**
+ * @brief 获取当前正在运行代码的 CPU（或硬件线程，hart）的编号（ID）
+ * 
+ * 在多核或多处理器系统中，每个 CPU 都有唯一的编号，内核通过 cpuid() 可以识别当前代码运行在哪个 CPU 上
+ * 
+ * @return int 当前正在运行代码的 CPU 的编号（ID）
+ * 
+ */
 int             cpuid(void);
+
+/**
+ * @brief 终止当前进程的执行
+ * 
+ * 调用 exit 后，操作系统会进行资源回收（如关闭文件、释放内存等），并将进程状态设置为“已终止”，等待父进程处理
+ * 
+ * @param status 进程的退出状态码，父进程可以通过该状态码获知子进程的退出原因
+ * 
+ */
 void            exit(int);
+
+/**
+ * @brief 建一个当前进程的子进程
+ * 
+ * 调用 fork() 后，系统会复制当前进程的大部分资源（如内存空间、文件描述符等），生成一个新的子进程
+ * 
+ * 
+ * @return int  在父进程中，fork() 返回新创建子进程的进程 ID（PID）
+ *              在子进程中，fork() 返回 0
+ *              如果创建失败，返回 -1
+ * 
+ * 父进程和子进程的执行几乎完全独立
+ * 
+ */
 int             fork(void);
 int             growproc(int);
 
@@ -192,14 +246,59 @@ int             growproc(int);
  * @param pagetable 进程的页表
  * 
  */
-void            proc_mapstacks(pagetable_t);
+ void            proc_mapstacks(pagetable_t);
+
+ /**
+  * @brief 返回某个进程对应的内存页表
+  * 
+  * @param p 进程结构体指针
+  * 
+  * @return pagetable_t 该进程对应的页表
+  * 
+  * 通过这个函数，内核可以方便地获取某个进程的页表，用于内存分配、回收、地址转换等操作
+  * 
+  */
 pagetable_t     proc_pagetable(struct proc *);
+
+/**
+ * @brief 释放进程的页表及其映射的物理内存
+ * 
+ * 该函数会解除对 trampoline 和 trapframe 页的映射，并释放所有用户内存
+ * 
+ * @param pagetable 进程的页表
+ * @param sz 进程的地址空间大小
+ * 
+ * 通常在进程退出或需要回收内存时被调用
+ * 确保与该进程相关的所有虚拟内存映射都被正确清理，防止内存泄漏
+ * 
+ */
 void            proc_freepagetable(pagetable_t, uint64);
 int             kill(int);
 int             killed(struct proc*);
 void            setkilled(struct proc*);
+
+/**
+ * @brief 获取 当前正在运行代码的 CPU（或硬件线程，hart）对应的 cpu 结构体指针
+ * 
+ * 多核或多处理器系统中，内核需要区分和管理每个 CPU 的本地状态（如当前运行的进程、调度信息、中断嵌套等）
+ * 通过调用 mycpu()，内核代码可以方便地获取当前 CPU 的本地数据结构，实现对多核环境下各自资源的隔离和管理
+ * 
+ * @return struct cpu* 当前运行的CPU 结构体指针
+ * 
+ */
 struct cpu*     mycpu(void);
-struct cpu*     getmycpu(void);
+
+/**
+ * @brief 获取当前 CPU 正在运行的进程的指针
+ * 
+ * @return struct proc*   指向当前 CPU 正在运行进程结构体的指针
+ *                        如当前CPU没有正在运行的进程，返回 0 (NULL)
+ * 
+ * 在多核或多线程操作系统中，每个 CPU（或硬件线程）都可能在运行不同的进程
+ * 通过调用 myproc()，内核代码可以方便地获取当前上下文下的进程结构体
+ * 进而访问或修改该进程的状态、内存、文件等信息
+ * 
+ */
 struct proc*    myproc();
 
 /**
@@ -210,8 +309,27 @@ void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
 void            sleep(void*, struct spinlock*);
+/**
+ * @brief 初始化第一个用户进程
+ * 
+ * 它的作用是在系统启动时创建并设置初始用户环境（如加载 init 程序），为后续用户进程的运行打下基础
+ * 
+ * 该函数的具体实现会分配进程结构、设置内存空间、加载用户代码，并将进程状态设置为可运行
+ * 
+ */
 void            userinit(void);
 int             wait(uint64);
+
+/**
+ * @brief 唤醒所有在 chan（某个等待条件或资源）上睡眠的进程
+ * 
+ * 在内核中，进程可能因为等待某个事件（如 I/O 完成、资源可用等）而主动进入睡眠状态
+ * wakeup 函数的作用就是通知所有等待某个特定条件或资源的进程，让它们从睡眠状态变为可运行状态（RUNNABLE）
+ * 以便调度器可以重新调度它们执行
+ * 
+ * @param chan 某个等待条件或资源
+ * 
+ */
 void            wakeup(void*);
 void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
@@ -316,8 +434,34 @@ void            initsleeplock(struct sleeplock*, char*);
 
 // string.c
 int             memcmp(const void*, const void*, uint);
+
+/**
+ * @brief 将内存区域 src 的前 n 个字节安全地复制到目标区域 dst
+ * 
+ * 与 memcpy 不同，memmove 能正确处理源和目标区域重叠的情况 
+ * 
+ * @param dst 目标内存指针
+ * @param src 源内存指针
+ * @param n 需要复制的字节大小
+ * 
+ * @return void* 复制后的目标内存指针 
+ * 
+ */
 void*           memmove(void*, const void*, uint);
 void*           memset(void*, int, uint);
+
+/**
+ * @brief 安全地将源字符串复制到目标字符串中，最多复制指定数量的字符，并确保目标字符串以 \0 结尾
+ * 
+ * @param dst 目标字符串指针
+ * @param src 源字符串指针 
+ * @param n 需要拷贝的字符数
+ * 
+ * @return char* 目标字符串的指针
+ * 
+ * 可以有效防止因字符串过长导致的内存越界，是内核或底层代码中常用的安全字符串复制函数
+ * 
+ */
 char*           safestrcpy(char*, const char*, int);
 int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
@@ -417,12 +561,69 @@ void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
  * @return int 返回 0 表示成功，返回 -1 表示失败
  */
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
+/**
+ * @brief 创建并初始化一个新的用户页表
+ * 
+ * @return pagetable_t 创建后的用户进程页表地址，返回 0 代表内存不够分配
+ * 
+ * 通常会分配一组用于虚拟内存管理的数据结构，并设置好初始的映射关系（如空页表或只包含必要的内核映射）
+ * 
+ */
 pagetable_t     uvmcreate(void);
+
+/**
+ * @brief 新创建的用户页表中，映射并初始化用户空间的第一页（通常是进程的起始代码）
+ * 它会将指定的数据（如 initcode）复制到用户虚拟地址空间的起始位置，为用户进程的启动做好准备
+ *
+ * @param pagetable 用户页表指针
+ * @param src 用户进程的初始代码
+ * @param sz 用户进程的初始代码大小 
+ * 
+ * @return void 无返回
+ * @note sz 必须小于一页（通常为 4096 字节）
+ * 
+ */
 void            uvmfirst(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64, int);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
+
+/**
+ * @brief 将一个进程的用户虚拟内存空间（包括页表和物理页内容）复制到另一个进程的页表中
+ * 
+ * @param pagetable_t：源页表，表示要复制的原进程的页表
+ * @param pagetable_t：目标页表，表示新进程的页表
+ * @param uint64：要复制的虚拟地址空间的大小（通常为字节数）
+ * 
+ * @return int 回值为 0 表示复制成功，非 0 表示失败（如内存不足等)
+ * 
+ * 常用于实现 fork() 系统调用时子进程对父进程内存空间的复制
+ * 保证了父子进程拥有独立但内容相同的用户空间，是多进程操作系统实现进程隔离和资源复制的关键步骤
+ * 
+ */
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
+
+/**
+ * @brief 释放整个用户页表及其对应的物理内存资源
+ * 
+ * @param pagetable 用户页表指针
+ * @param sz 用户地址空间大小
+ * 
+ * 
+ */
 void            uvmfree(pagetable_t, uint64);
+/**
+ * @brief 将指定虚拟地址范围从页表中解除映射
+ * 
+ * @param pagetable 页表指针
+ * @param va 虚拟地址起始位置
+ * @param npages 要解除映射的页面数量
+ * @param do_free 如果非零，则释放对应的物理内存页面
+ * 
+ * @return void 无返回
+ * 
+ * 用于进程释放内存或回收资源时，确保虚拟地址空间和物理内存的正确管理
+ * 
+ */
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
 

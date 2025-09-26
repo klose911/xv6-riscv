@@ -6,15 +6,23 @@
 #include "proc.h"
 #include "defs.h"
 
-struct cpu cpus[NCPU];
+struct cpu cpus[NCPU]; // cpu状态数组
 
-struct proc proc[NPROC];
+struct proc proc[NPROC]; // 进程数组
 
-struct proc *initproc;
+struct proc *initproc; // init进程
 
-int nextpid = 1;
+int nextpid = 1; // 累计进程号
 struct spinlock pid_lock; // 用于分配进程 ID 的自旋锁
 
+/**
+ * @brief forkret 函数的声明
+ * 
+ * 通常用于新进程（由 fork 创建）第一次被调度运行时的入口点
+ * 内核会将新进程的上下文（context）设置为从 forkret 开始执行
+ * forkret 负责完成最后的内核初始化步骤，然后让进程安全地切换回用户空间，开始正常运行用户代码
+ * 
+ */
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
@@ -80,6 +88,8 @@ procinit(void)
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
+
+// 中断必须关闭，防止进程被挪到另一个不同的cpu上
 int
 cpuid()
 {
@@ -89,25 +99,35 @@ cpuid()
 
 // Return this CPU's cpu struct.
 // Interrupts must be disabled.
+
+// 中断必须关闭
 struct cpu*
 mycpu(void)
 {
-  int id = cpuid();
-  struct cpu *c = &cpus[id];
+  int id = cpuid(); // 获取当前cpu id
+  struct cpu *c = &cpus[id]; // 查询当前cpu对应的结构体指针
   return c;
 }
 
 // Return the current struct proc *, or zero if none.
+// 返回当前运行的进程指针，如果不存在，返回 0 （NULL）
 struct proc*
 myproc(void)
 {
-  push_off();
-  struct cpu *c = mycpu();
-  struct proc *p = c->proc;
-  pop_off();
+  push_off(); // 关闭中断并增加嵌套深度
+  struct cpu *c = mycpu(); // 获得当前cpu指针
+  struct proc *p = c->proc; // 从当前cpu结构获取当前进程
+  pop_off(); // 打开中断并减少嵌套深度
   return p;
 }
 
+/**
+ * @brief 初始化某个进程的 PID
+ * 
+ * @return int 返回新分配的进程 ID 
+ * 
+ * 注意：该函数在分配 PID 时会获取 pid_lock 全局自旋锁，确保在多核环境下的线程安全
+ */
 int
 allocpid()
 {
@@ -125,45 +145,59 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
+
+// 该函数会在进程表中查找一个状态为 UNUSED（未使用）的进程结构体 proc
+// 如果找到空闲的进程项，就会初始化它，使其具备在内核中运行所需的状态
+// 并在返回时持有该进程的锁（p->lock）
+// 如果没有空闲进程项，或者内存分配失败，则返回 0（NULL 指针）
+
+/**
+ * @brief 分配一个新的进程结构体
+ * 
+ * @return struct proc* 成功返回指向新进程结构体的指针，失败返回 0 
+ * 
+ */
 static struct proc*
 allocproc(void)
 {
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
+    acquire(&p->lock); // 获取该进程的自旋锁，防止并发访问
     if(p->state == UNUSED) {
       goto found;
     } else {
-      release(&p->lock);
+      release(&p->lock); // 无法找到空闲进程，释放锁继续查找
     }
   }
   return 0;
 
+  // 找到空闲进程，进行初始化
 found:
-  p->pid = allocpid();
-  p->state = USED;
+  p->pid = allocpid(); // 分配唯一的进程 ID
+  p->state = USED; // 将进程状态设置为 USED（已使用）
 
-  // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
+  // Allocate a trapframe page. 为该进程分配一个 trapframe 页面
+  if((p->trapframe = (struct trapframe *)kalloc()) == 0){ // 分配失败
+    freeproc(p); // 释放该进程结构体
+    release(&p->lock); // 释放该进程的自旋锁
     return 0;
   }
 
   // An empty user page table.
-  p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
-    freeproc(p);
-    release(&p->lock);
+  p->pagetable = proc_pagetable(p); // 为进程分配一个空的用户级别内存页表
+  if(p->pagetable == 0){ // 分配页表失败
+    freeproc(p); // 释放该进程结构体
+    release(&p->lock); // 释放该进程的自旋锁
     return 0;
   }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
-  memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
-  p->context.sp = p->kstack + PGSIZE;
+  // 新进程的上下文会被设置为从 forkret 函数开始执行，forkret 最终会让进程返回到用户空间
+  memset(&p->context, 0, sizeof(p->context)); // 将进程的 context 结构体清零，确保所有寄存器初始值为 0，避免遗留脏数据
+  p->context.ra = (uint64)forkret; // 设置返回地址寄存器（ra），让进程被调度运行时，从 forkret 函数入口开始执行
+  p->context.sp = p->kstack + PGSIZE; // 设置栈指针（sp）为该进程内核栈的栈顶，保证内核代码运行时有独立的栈空间
 
   return p;
 }
@@ -171,14 +205,27 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+
+// 调用 freeproc 时，必须已经持有该进程的锁（p->lock）
+// 以保证在多核或多线程环境下的并发安全，防止资源被其他线程同时访问或修改
+
+/**
+ * @brief 释放一个进程结构体（proc）以及与其相关联的所有资源，包括用户空间分配的内存页等
+ * 
+ * @param p 进程结构体指针 
+ * 
+ * @return void 无返回 
+ * 
+ */
 static void
 freeproc(struct proc *p)
 {
   if(p->trapframe)
-    kfree((void*)p->trapframe);
-  p->trapframe = 0;
+    kfree((void*)p->trapframe); // 释放该进程的 trapframe 页面
+  p->trapframe = 0; 
   if(p->pagetable)
-    proc_freepagetable(p->pagetable, p->sz);
+    proc_freepagetable(p->pagetable, p->sz); // 释放该进程的页表及其映射的物理内存
+  // 释放完毕后，将相关指针和字段清零，防止悬挂指针和数据污染
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -192,33 +239,47 @@ freeproc(struct proc *p)
 
 // Create a user page table for a given process, with no user memory,
 // but with trampoline and trapframe pages.
+
+// 为指定进程创建一个用户页表
+// 新页表中不包含任何用户内存（即用户代码和数据还未映射）
+// 但会包含 trampoline（跳板代码）和 trapframe（陷入帧）这两个特殊页面的映射
 pagetable_t
 proc_pagetable(struct proc *p)
 {
   pagetable_t pagetable;
 
   // An empty page table.
-  pagetable = uvmcreate();
-  if(pagetable == 0)
+  pagetable = uvmcreate(); // 创建空的用户进程页表
+  if(pagetable == 0) // 内存不够，返回 0 
     return 0;
 
   // map the trampoline code (for system call return)
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
   // to/from user space, so not PTE_U.
+  // trampoline 代码被映射到用户虚拟地址空间的最高地址处 
+  // 但实际上只有内核（supervisor）会使用它，用户态无法直接访问（系统调用返回时候，会调用这部分代码）
+  // 因此映射时不设置 PTE_U（用户可访问）权限
+
+  // 将 trampoline 代码的物理地址映射到虚拟地址 TRAMPOLINE
+  // 大小为一页（PGSIZE），权限为只读和可执行（PTE_R | PTE_X）
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
-              (uint64)trampoline, PTE_R | PTE_X) < 0){
-    uvmfree(pagetable, 0);
+              (uint64)trampoline, PTE_R | PTE_X) < 0){ 
+    uvmfree(pagetable, 0); // 映射失败，释放页表，返回 0 
     return 0;
   }
 
   // map the trapframe page just below the trampoline page, for
   // trampoline.S.
+  // 映射 trapframe（陷入帧）页面，为 trampoline.S（跳板汇编代码）提供支持 
+
+  // 将当前进程的 trapframe 物理地址映射到虚拟地址 TRAPFRAME
+  // 大小为一页（PGSIZE），权限为只读和可写（PTE_R | PTE_W）
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
-              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
-    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-    uvmfree(pagetable, 0);
-    return 0;
+              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){ // 映射失败
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0); // 解除 TRAMPOLINE 的映射
+    uvmfree(pagetable, 0); // 释放内存页表
+    return 0; 
   }
 
   return pagetable;
@@ -226,12 +287,15 @@ proc_pagetable(struct proc *p)
 
 // Free a process's page table, and free the
 // physical memory it refers to.
+// 释放进程相关的页表及其映射的物理内存 
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
-  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-  uvmunmap(pagetable, TRAPFRAME, 1, 0);
-  uvmfree(pagetable, sz);
+  // 解除页表中 TRAMPOLINE 虚拟地址对应的一个页的映射，但不释放物理内存（最后一个参数为 0）
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0); // TRAMPOLINE 通常用于用户态和内核态切换的跳板代码
+  // 解除页表中 TRAPFRAME 虚拟地址对应的一个页的映射，但不释放物理内存
+  uvmunmap(pagetable, TRAPFRAME, 1, 0); // TRAPFRAME 用于保存进程在发生中断或系统调用时的寄存器状态
+  uvmfree(pagetable, sz); // 释放进程对应的内存页表及其映射的物理内存
 }
 
 // a user program that calls exec("/init")
@@ -253,24 +317,31 @@ userinit(void)
 {
   struct proc *p;
 
-  p = allocproc();
+  p = allocproc(); // 创建第一个进程
   initproc = p;
   
   // allocate one user page and copy initcode's instructions
   // and data into it.
+  // 分配一页用户内存，并将 initcode 的指令和数据复制到这页内存中
   uvmfirst(p->pagetable, initcode, sizeof(initcode));
-  p->sz = PGSIZE;
+  p->sz = PGSIZE; // 设置进程的内存大小为一页（PGSIZE）
 
   // prepare for the very first "return" from kernel to user.
+  // 为进程的第一次从内核态“返回”到用户态做准备
+
+  // 设置用户程序计数器（epc）为 0，表示用户程序将从虚拟地址 0 开始执行
+  // 对于初始进程，这通常对应 initcode 的入口地址。
   p->trapframe->epc = 0;      // user program counter
+  // 设置用户栈指针（sp）为一页的顶部（PGSIZE），即用户栈从虚拟地址 0 到 PGSIZE，栈顶在 PGSIZE 处
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
-  safestrcpy(p->name, "initcode", sizeof(p->name));
-  p->cwd = namei("/");
+  // 将字符串 "initcode" 安全地复制到进程结构体 p 的 name 字段中，最多复制 sizeof(p->name) 个字节
+  safestrcpy(p->name, "initcode", sizeof(p->name)); 
+  p->cwd = namei("/"); // 进程 p 设置当前工作目录（cwd）为根目录
 
-  p->state = RUNNABLE;
+  p->state = RUNNABLE; // 设置初始进程为可执行
 
-  release(&p->lock);
+  release(&p->lock); // 释放初始进程的锁
 }
 
 // Grow or shrink user memory by n bytes.
@@ -295,20 +366,23 @@ growproc(int n)
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
+// 创建一个新进程，并复制父进程的相关内容（如内存页表、寄存器、文件描述符等），实现父子进程的分离
+// 其次，它会设置子进程的内核栈，使得当子进程第一次被调度运行时，看起来就像是从 fork() 系统调用返回一样
 int
 fork(void)
 {
   int i, pid;
   struct proc *np;
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // 获得当前cpu正在运行的进程
 
   // Allocate process.
-  if((np = allocproc()) == 0){
-    return -1;
+  if((np = allocproc()) == 0){ // 创建一个新的进程失败
+    return -1; // 内核奔溃，返回 -1 
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  // 复制内存父进程的内存页表到子进程
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){ // 复制失败，释放内存，返回 -1 
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -316,45 +390,57 @@ fork(void)
   np->sz = p->sz;
 
   // copy saved user registers.
+  // 复制父进程 trap帧 （父进程保存的寄存器）
   *(np->trapframe) = *(p->trapframe);
 
   // Cause fork to return 0 in the child.
-  np->trapframe->a0 = 0;
+  // 让 fork() 系统调用在子进程中返回 0  
+  // 根据 RISC-V 调用约定，a0 用于存放函数返回值。
+  np->trapframe->a0 = 0; // 将子进程 trapframe（陷入帧）中的 a0 寄存器设置为 0
 
   // increment reference counts on open file descriptors.
+  // 遍历父进程打开的文件，增加子进程对这些文件的引用计数
   for(i = 0; i < NOFILE; i++)
-    if(p->ofile[i])
-      np->ofile[i] = filedup(p->ofile[i]);
-  np->cwd = idup(p->cwd);
+    if(p->ofile[i]) // 父进程引用这个文件
+      np->ofile[i] = filedup(p->ofile[i]); 
+  np->cwd = idup(p->cwd); // 设置子进程的当前目录为父进程的当前目录，并把当前目录的inode引用计数 + 1 
 
-  safestrcpy(np->name, p->name, sizeof(p->name));
+  safestrcpy(np->name, p->name, sizeof(p->name)); // 安全拷贝进程名字
 
   pid = np->pid;
 
-  release(&np->lock);
+  release(&np->lock); // 释放allocate时候获取到的子进程的自旋锁
 
-  acquire(&wait_lock);
-  np->parent = p;
+  acquire(&wait_lock); 
+  np->parent = p; //设置子进程的父进程ID，注意：需要对wait加锁，保证并发
   release(&wait_lock);
 
   acquire(&np->lock);
-  np->state = RUNNABLE;
+  np->state = RUNNABLE; //设置子进程的状态为可执行，注意：需要对子进程加锁，保证并发
   release(&np->lock);
 
-  return pid;
+  return pid; // 父进程调用fork返回 子进程的id
 }
 
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
+/**
+ * @brief 终止某个进程之前，将它的所有子进程重新分配，作为 init 进程的子进程
+ * 
+ * @param p 进程结构体指针
+ * 
+ * @note 这个函数调用者必须持有 wait_lock 全局自旋锁
+ * 
+ */
 void
 reparent(struct proc *p)
 {
   struct proc *pp;
 
-  for(pp = proc; pp < &proc[NPROC]; pp++){
-    if(pp->parent == p){
-      pp->parent = initproc;
-      wakeup(initproc);
+  for(pp = proc; pp < &proc[NPROC]; pp++){ // 遍历进程表
+    if(pp->parent == p){ // 是否是进程p的子进程
+      pp->parent = initproc; // 修改这个进程的父进程为 init 进程
+      wakeup(initproc); // 唤醒所有等待“initproc”资源的进程
     }
   }
 }
@@ -362,46 +448,53 @@ reparent(struct proc *p)
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
+
+// 当进程调用 exit 时，会立即终止当前进程的执行，且该函数不会返回到调用者
+// 被终止的进程会进入 ZOMBIE（僵尸）状态，表示进程已经退出，但其父进程还没有回收它的资源（如退出码等）
+// 只有当父进程调用 wait()，回收了子进程的资源后，僵尸进程才会被系统彻底清理
 void
 exit(int status)
 {
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // 获取当前CPU的当前运行的进程
 
-  if(p == initproc)
+  if(p == initproc) // 无法停止 init 进程，内核奔溃
     panic("init exiting");
 
   // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
-      struct file *f = p->ofile[fd];
-      fileclose(f);
-      p->ofile[fd] = 0;
+  // 关闭所有当前进程打开的文件
+  for(int fd = 0; fd < NOFILE; fd++){ // 遍历进程所有的文件描述符
+    if(p->ofile[fd]){ // 文件被打开
+      struct file *f = p->ofile[fd]; // 根据文件描述符获得文件指针
+      fileclose(f);  // 关闭文件
+      p->ofile[fd] = 0; // 文件描述符对应的文件指针置为 NULL 
     }
   }
 
   begin_op();
-  iput(p->cwd);
+  iput(p->cwd); // 进程工作目录的inode引用计数 - 1 
   end_op();
-  p->cwd = 0;
+  p->cwd = 0; // 设置进程工作目录为 NULL 
 
   acquire(&wait_lock);
 
   // Give any children to init.
-  reparent(p);
+  reparent(p); // 重新设置所有子进程的父进程为 initproc 
 
   // Parent might be sleeping in wait().
-  wakeup(p->parent);
+  wakeup(p->parent); // 唤醒所有等待“当前进程的父进程”的进程
   
-  acquire(&p->lock);
+  // 注意：这个获取的进程锁，只有在wait调用的时候，所有资源清理完才会释放
+  // 因此这里并不会调用 release 
+  acquire(&p->lock); // 获取当前进程的进程锁
 
-  p->xstate = status;
-  p->state = ZOMBIE;
+  p->xstate = status; // 设置返回的状态码
+  p->state = ZOMBIE; // 设置状态为 ZOMBIE, 等待init进程清理
 
-  release(&wait_lock);
+  release(&wait_lock); // 释放wait_lock 
 
   // Jump into the scheduler, never to return.
-  sched();
-  panic("zombie exit");
+  sched(); // 进入进程调度器，不再返回
+  panic("zombie exit"); // 如果返回，内核奔溃
 }
 
 // Wait for a child process to exit and return its pid.
@@ -539,26 +632,34 @@ yield(void)
 
 // A fork child's very first scheduling by scheduler()
 // will swtch to forkret.
+
+// 新创建的子进程（通过 fork 产生）在被调度器（scheduler）第一次调度运行时
+// 会切换（switch）到 forkret 函数执行
+// 保证了文件系统初始化只会被执行一次，并且在多核环境下不会出现竞态条件
 void
 forkret(void)
 {
+  // 声明并初始化一个静态变量 first，用于是否已经初始化
+  // 静态变量只在本函数内可见，并且在多次调用间保持其值
   static int first = 1;
 
   // Still holding p->lock from scheduler.
-  release(&myproc()->lock);
+  release(&myproc()->lock); // 释放当前进程的锁，此时已经不再需要保护进程结构体的数据
 
-  if (first) {
+  if (first) { 
     // File system initialization must be run in the context of a
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
-    fsinit(ROOTDEV);
 
-    first = 0;
+    // 必须在普通进程上下文中执行（如可能调用 sleep），不能在 main() 里直接运行
+    fsinit(ROOTDEV); // 调用文件系统初始化函数，通常会挂载根文件系统等
+
+    first = 0; // 设置标志，表示文件系统已经初始化
     // ensure other cores see first=0.
-    __sync_synchronize();
+    __sync_synchronize(); // 内存屏障，确保 first=0 的写操作对所有 CPU 核心可见，防止多核下的可见性问题
   }
 
-  usertrapret();
+  usertrapret(); // 让进程返回用户态，继续正常执行用户代码
 }
 
 // Atomically release lock and sleep on chan.
@@ -594,18 +695,23 @@ sleep(void *chan, struct spinlock *lk)
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
+
+// 唤醒所有在 chan（某个等待条件或资源）上睡眠的进程
+// 也就是说，凡是因为等待 chan 而进入睡眠状态的进程，都会被唤醒，变为可运行状态
+// 必须在没有持有任何进程锁（p->lock）的情况下调用此函数
+// 这样可以避免死锁，因为这个函数会尝试获取p->lock 
 void
 wakeup(void *chan)
 {
   struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++) {
-    if(p != myproc()){
-      acquire(&p->lock);
+  for(p = proc; p < &proc[NPROC]; p++) { // 遍历所有进程
+    if(p != myproc()){ // 非当前进程
+      acquire(&p->lock); // 修改某个进程状态，需要获取这个进程对应的进程锁
       if(p->state == SLEEPING && p->chan == chan) {
-        p->state = RUNNABLE;
+        p->state = RUNNABLE; // 修改符合条件的进程运行状态为 “可执行”
       }
-      release(&p->lock);
+      release(&p->lock); // 释放进程锁
     }
   }
 }
