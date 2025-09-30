@@ -41,5 +41,5 @@ main()
     plicinithart();   // ask PLIC for device interrupts
   }
 
-  scheduler();        
+  scheduler(); // 每个CPU各自开启一个线程执行调度函数       
 }
