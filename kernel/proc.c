@@ -553,41 +553,58 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+
+// 每个 CPU 都有自己的调度器实例，负责本地进程的调度
+//每个 CPU 在初始化后会调用 scheduler()，并且该函数永远不会返回（即进入一个无限循环）
+// 调度器的主要循环流程包括：
+//  - 选择一个可运行的进程
+//  - 通过 swtch 切换到该进程的上下文，开始运行该进程
+//  - 当进程主动让出 CPU 或被抢占时，会再次通过 swtch 返回到调度器，继续选择下一个进程
 void
 scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
 
-  c->proc = 0;
+  c->proc = 0; // 清空当前CPU运行的进程
   for(;;){
     // The most recent process to run may have had interrupts
     // turned off; enable them to avoid a deadlock if all
     // processes are waiting.
-    intr_on();
+    // 最近刚刚运行的进程可能已经关闭了中断，如果调度器不主动重新开启中断
+    // 可能会导致所有进程都在等待某些事件时，系统无法响应这些中断，从而陷入死锁。
+    // 通过在每次调度循环开始时调用 intr_on()，可以确保中断始终处于开启状态
+    // 保证调度器能够及时响应外部事件，唤醒等待中的进程，避免系统停滞
+    intr_on(); // 打开中断
 
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
+      acquire(&p->lock); // 获得进程的自旋锁
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+        p->state = RUNNING; // 设置进程的状态为运行
+        c->proc = p; // 设置cpu里运行的进程
+        swtch(&c->context, &p->context); // 切换cpu执行的上下文，执行找到的进程p
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+        
+        // 表示进程 p 本次的运行已经结束
+        // 强调在进程 p 返回调度器之前，必须已经修改了自身的状态（p->state）
+        // 比如从 RUNNING 改为 SLEEPING、RUNNABLE，并且在sleep，yield等方法里已经对进程上锁
+        // 这样可以确保调度器能够正确地管理进程状态，避免进程被错误地再次调度或出现状态混乱
+        c->proc = 0; // 清空cpu中进程域
+        found = 1; // 表示找到一个可执行的进程
       }
-      release(&p->lock);
+      release(&p->lock); // 释放进程的可执行锁（由yield，sleep等函数上锁）
     }
-    if(found == 0) {
+    if(found == 0) { // 没有找到任何一个可执行的进程
       // nothing to run; stop running on this core until an interrupt.
-      intr_on();
-      asm volatile("wfi");
+      // 无事可做，停止运行当前cpu核心，直到中断发生
+      intr_on(); // 打开中断
+      asm volatile("wfi"); // 会让 CPU 进入低功耗等待状态，直到有中断（如定时器、外设等）到来时才会被唤醒
     }
   }
 }
@@ -599,33 +616,48 @@ scheduler(void)
 // be proc->intena and proc->noff, but that would
 // break in the few places where a lock is held but
 // there's no process.
+
+// 表示当前代码涉及将执行权交还给调度器，让调度器选择下一个要运行的进程
+
+// 在切换前，必须只持有当前进程的锁（p->lock），并且已经更新了进程的状态（如从 RUNNING 改为 SLEEPING 或 RUNNABLE）
+// 以保证并发安全和状态一致性
+
+// 说明需要保存和恢复中断使能状态（intena），因为它属于当前内核线程（进程），而不是整个 CPU
+// 这样可以确保进程切换后中断状态不会混乱
+
+// 理想情况下，intena 和 noff（中断嵌套计数）应该作为进程结构体的成员
+// 但在某些特殊情况下（如持有锁但没有当前进程时），这样做会导致问题
 void
 sched(void)
 {
   int intena;
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // 获取当前CPU的当前进程
 
-  if(!holding(&p->lock))
-    panic("sched p->lock");
-  if(mycpu()->noff != 1)
+  if(!holding(&p->lock)) // 未持有当前进程的进程自旋锁，奔溃
+    panic("sched p->lock"); 
+  if(mycpu()->noff != 1) // 中断嵌套深度必须为 1 
     panic("sched locks");
-  if(p->state == RUNNING)
-    panic("sched running");
-  if(intr_get())
+  if(p->state == RUNNING) // 进程状态不能是可运行 
+    panic("sched running"); 
+  if(intr_get()) // 不允许启用中断
     panic("sched interruptible");
 
-  intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
-  mycpu()->intena = intena;
+  intena = mycpu()->intena; // 保存 中断嵌套计数
+  // mycpu 里保存的 context 一般是内核也就是调度器的上下文
+  // 实际上是调度函数 scheduler() 中 switch 语句的下一条
+  swtch(&p->context, &mycpu()->context); // 切换当前进程到调度器
+  mycpu()->intena = intena; // 恢复 中断嵌套计数
 }
 
 // Give up the CPU for one scheduling round.
+// 当前CPU运行的进程放弃运行，调度器进行进程调度
 void
 yield(void)
 {
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // 获取当前CPU运行的进程
+  // 这里给进程上锁，解锁的机制类似于sleep 
   acquire(&p->lock);
-  p->state = RUNNABLE;
+  p->state = RUNNABLE; // 修改进程状态为可执行
   sched();
   release(&p->lock);
 }
@@ -664,10 +696,12 @@ forkret(void)
 
 // Atomically release lock and sleep on chan.
 // Reacquires lock when awakened.
+
+// 自动释放持有的自旋锁，并在睡眠中等待chan, 醒来之后自动再次获得自旋锁
 void
 sleep(void *chan, struct spinlock *lk)
 {
-  struct proc *p = myproc();
+  struct proc *p = myproc(); // 获取当前CPU的当前进程
   
   // Must acquire p->lock in order to
   // change p->state and then call sched.
@@ -676,21 +710,30 @@ sleep(void *chan, struct spinlock *lk)
   // (wakeup locks p->lock),
   // so it's okay to release lk.
 
+  // 首先，必须先获取当前进程的自旋锁 p->lock，这样才能安全地修改进程状态（p->state）并调用调度器（sched）
+  // 如果不加锁，可能会有竞态条件，导致进程状态不一致或调度混乱
+  
+  // 一旦持有了 p->lock，就可以保证不会错过任何唤醒（wakeup）操作
+  // 因为 wakeup 在唤醒进程时也会加 p->lock，这样 sleep 和 wakeup 之间就不会出现竞态
+  // 因此，在持有 p->lock 的前提下，可以放心地释放传入的锁 lk，避免死锁或锁顺序问题
+
+  // 注：这里上的锁，并不是由本函数最后的release释放，而是在scheduler里释放
   acquire(&p->lock);  //DOC: sleeplock1
-  release(lk);
+  release(lk); // 释放原来持有的任意自旋锁
 
   // Go to sleep.
-  p->chan = chan;
-  p->state = SLEEPING;
+  p->chan = chan; // 设置进程等待资源chan 
+  p->state = SLEEPING; // 设置进程状态为 睡眠
 
-  sched();
+  sched(); // 把当前进程切换出去
 
   // Tidy up.
-  p->chan = 0;
+  p->chan = 0; // 清理 等待条件
 
   // Reacquire original lock.
-  release(&p->lock);
-  acquire(lk);
+  // 这里释放的自旋锁，并不是开头获取的，而是在scheduler函数中获取的
+  release(&p->lock); // 释放进程的自旋锁
+  acquire(lk); // 再次获得调用sleep前持有的自旋锁
 }
 
 // Wake up all processes sleeping on chan.

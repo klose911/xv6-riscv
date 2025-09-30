@@ -306,8 +306,44 @@ struct proc*    myproc();
  * 
  */
 void            procinit(void);
+
+/**
+ * @brief 核心调度器函数
+ * 
+ * 它负责不断地选择和切换可运行的进程，让 CPU 能够在多个进程之间轮流执行，实现多任务并发
+ * 
+ * @note __attribute__((noreturn)) 告诉编译器，这个函数不会返回到调用者
+ * 也就是说，一旦进入 scheduler，就不会再回到原来的执行点
+ * 通常是一个无限循环，只有通过上下文切换（如 swtch）跳转到其他进程
+ */
 void            scheduler(void) __attribute__((noreturn));
+
+/**
+ * @brief 把当前进程的上下文切换成调度器进程的上下文
+ * 
+ * 当进程因为等待资源、进入睡眠或主动让出 CPU 时，会调用 sched()，恢复scheduler函数的执行
+ * 
+ * 在调用前，通常需要先修改当前进程的状态（如设置为 SLEEPING 或 RUNNABLE）
+ * 并确保只持有当前进程的锁，以保证调度过程的安全和一致性
+ * 
+ * sched() 会保存当前进程的上下文，然后切换到调度器上下文，等到该进程再次被调度时再恢复执行
+ * 这是多任务操作系统实现进程切换和 CPU 资源分配的基础机制
+ * 
+ */
 void            sched(void);
+
+/**
+ * @brief 内核中让当前进程进入睡眠状态
+ * 
+ * 直到某个条件（通常与 chan 相关）被满足或事件发生
+ * sleep 会在进程睡眠前自动释放该锁，并在被唤醒后重新获取，确保临界区的并发安全
+ * 
+ * @param chan 用作等待队列的标识，表示进程因等待某个资源或事件而睡眠
+ * @param lk 自旋锁指针，表示当前持有的自旋锁 
+ * 
+ * @return void 无返回
+ * 
+ */
 void            sleep(void*, struct spinlock*);
 /**
  * @brief 初始化第一个用户进程
@@ -331,12 +367,30 @@ int             wait(uint64);
  * 
  */
 void            wakeup(void*);
+/**
+ * @brief 让当前正在运行的进程或线程主动让出 CPU 的使用权
+ * 
+ * 调用 yield() 后，将当前进程的状态设置为可运行（RUNNABLE）
+ * 然后调度器会选择下一个可运行的进程进行调度
+ * 
+ */
 void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 
 // swtch.S
+
+/**
+ * @brief 上下文切换（context switch）的核心函数
+ * 它的作用是在多任务环境下，将当前执行流从一个进程（或线程）的上下文切换到另一个进程（或线程）的上下文
+ * 
+ * @param old 保存当前进程的寄存器等上下文信息，以便将来能恢复执行
+ * @param new 目标进程的上下文，函数会加载该上下文，使 CPU 从目标进程的状态继续运行
+ * 
+ * swtch 通常由汇编实现，直接操作底层寄存器，是多任务调度和进程切换的基础
+ * 
+ */
 void            swtch(struct context*, struct context*);
 
 // spinlock.c
