@@ -412,8 +412,37 @@ void            wakeup(void*);
  * 
  */
 void            yield(void);
+
+/**
+ * @brief 根据 user_dst 的值，决定将数据从内核缓冲区复制到用户空间（需要地址转换和权限检查）或直接复制到内核空间
+ * 
+ * @param user_dst 0: 内核空间，非0：用户空间
+ * @param dst 目标地址，可以是用户虚拟地址或内核地址，取决于 user_dst 的值
+ * @param src 源数据的指针，通常指向内核空间的缓冲区
+ * @param len 要复制的数据字节数
+ * @return int 0 表示复制成功，-1 表示失败（如地址非法或权限不足）
+ * 
+ */
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+
+/**
+ * @brief 根据 user_src 的值，决定将数据从用户空间（需要地址转换和权限检查）或内核空间 复制到内核空间的缓冲区
+ * 
+ * @param dst 目标数据的指针，通常指向内核空间的缓冲区
+ * @param user_src 0: 内核空间，非0：用户空间
+ * @param src 源数据的地址，根据use_src 决定是内核缓冲区或 用户空间
+ * @param len 要复制的数据字节数
+ * @return int 0 表示复制成功，-1 表示失败（如地址非法或权限不足）
+ * 
+ */
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+
+/**
+ * @brief 打印当前系统中所有进程的状态信息
+ * 
+ * 通常包括进程的 PID、状态、名称、父进程等
+ * 它常用于内核调试或系统监控，帮助开发者或管理员了解进程的分布和运行情况
+ */
 void            procdump(void);
 
 // swtch.S

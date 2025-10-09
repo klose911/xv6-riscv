@@ -855,9 +855,23 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 // Print a process listing to console.  For debugging.
 // Runs when user types ^P on console.
 // No lock to avoid wedging a stuck machine further.
+// 该函数会将当前系统中所有进程的信息打印到控制台，主要用于调试（debugging）
+// 当用户在控制台输入 ^P（Ctrl+P）时，会触发运行此函数，方便开发者快速查看进程状态
+// 为了避免在系统卡死或异常时进一步导致死锁，procdump 在打印进程信息时不会加锁
+// 这种做法牺牲了一定的数据一致性，但能最大程度保证在系统异常时仍能输出有用的调试信息
 void
 procdump(void)
 {
+  // 定义了一个静态字符串数组 states[]，用于将进程状态的枚举值映射为对应的字符串
+  // 每个数组元素的下标对应一个进程状态的枚举常量（如 UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE）
+  // 而数组的内容则是这些状态的英文字符串
+
+  // 这种写法的好处是可以通过进程状态的枚举值直接索引到对应的字符串
+  // 方便在调试、日志输出或状态显示时，将内部的数值状态转换为易于理解的文本
+  // 例如，如果某个进程的状态为 RUNNING，则可以通过 states[RUNNING] 得到字符串 "run   "
+
+  //  这种数组初始化方式利用了 C 语言的“指定初始化器”特性
+  // 确保即使枚举值不是连续的，字符串和状态也能一一对应，避免出错
   static char *states[] = {
   [UNUSED]    "unused",
   [USED]      "used",
@@ -873,11 +887,13 @@ procdump(void)
   for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == UNUSED)
       continue;
+    // p->state >= 0 && p->state < NELEM(states): 判断进程状态 p->state 是否在有效范围内
+    // states[p->state]：进一步判断对应下标的字符串指针是否非空，确保该状态有对应的字符串描述
     if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
+    printf("%d %s %s", p->pid, state, p->name); // 打印进程的id，状态，名字
     printf("\n");
   }
 }
