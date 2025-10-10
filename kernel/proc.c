@@ -499,6 +499,8 @@ exit(int status)
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
+// 当前进程等待某个子进程结束并返回它的pid
+// 如果当前进程没有子进程，则返回 -1 
 int
 wait(uint64 addr)
 {
@@ -506,42 +508,50 @@ wait(uint64 addr)
   int havekids, pid;
   struct proc *p = myproc();
 
-  acquire(&wait_lock);
+  acquire(&wait_lock); // 获取 wait_lock 锁
 
-  for(;;){
+  for(;;){ 
     // Scan through table looking for exited children.
+    // 遍历进程表，寻找存在的子进程
     havekids = 0;
     for(pp = proc; pp < &proc[NPROC]; pp++){
       if(pp->parent == p){
         // make sure the child isn't still in exit() or swtch().
+        // 确保该子进程当前没有处于 exit() 或 swtch() 的临界区内
+        // 如果在没有加锁的情况下访问子进程的状态或资源，可能会遇到子进程正在退出或切换上下文的瞬间，导致竞态条件
+        // 因此，后续代码会先对子进程加锁，确保在安全的状态下检查和操作子进程，避免并发访问带来的问题
         acquire(&pp->lock);
 
         havekids = 1;
-        if(pp->state == ZOMBIE){
+        if(pp->state == ZOMBIE){ // 找到某个已经终止的进程
           // Found one.
           pid = pp->pid;
+          // 把子进程的终止状态 xstate （内核栈内） 复制到 addr （用户空间）
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                  sizeof(pp->xstate)) < 0) {
-            release(&pp->lock);
+                                  sizeof(pp->xstate)) < 0) { // 复制失败
+            release(&pp->lock); 
             release(&wait_lock);
-            return -1;
+            return -1; // 返回 -1 
           }
-          freeproc(pp);
-          release(&pp->lock);
-          release(&wait_lock);
-          return pid;
+          freeproc(pp); // 释放子进程的资源 
+          release(&pp->lock); // 释放子进程的进程锁
+          release(&wait_lock); // 释放 wait_lock 全局锁
+          return pid; // 返回释放的子进程的 pid 
         }
         release(&pp->lock);
       }
     }
 
     // No point waiting if we don't have any children.
-    if(!havekids || killed(p)){
-      release(&wait_lock);
-      return -1;
+    if(!havekids || killed(p)){ // 当前进程没有任何子进程，或者当前进程自己也终止了
+      release(&wait_lock); // 释放全局wait_lock 
+      return -1; // 返回 - 1 
     }
     
-    // Wait for a child to exit.
+    // Wait for a child to exit. 
+    // 当前进程进入睡眠，等待某个子进程推出 
+    // 子进程在调用exit的适合，会调用 wakeup(p->parent)
+    // 注意：sleep函数会释放 wait_lock, 在被 wakeup唤醒后，再次自动获得 wait_lock 
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
 }
@@ -762,15 +772,25 @@ wakeup(void *chan)
 // Kill the process with the given pid.
 // The victim won't exit until it tries to return
 // to user space (see usertrap() in trap.c).
+// 该函数会根据传入的进程 ID（pid）查找并标记要终止的进程。
+// 被标记为“已杀死”的进程并不会立即退出，而是要等到它下次从内核态返回用户态时
+//（比如系统调用结束或中断处理完成）
+// 在 usertrap() 里检测到被杀死的标志后，才会真正执行退出流程
 int
 kill(int pid)
 {
   struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++){
+  for(p = proc; p < &proc[NPROC]; p++){ // 遍历进程表
     acquire(&p->lock);
     if(p->pid == pid){
-      p->killed = 1;
+      p->killed = 1; // 标志进程已经结束
+      // 如果目标进程当前处于 SLEEPING（睡眠）状态，就将其状态修改为 RUNNABLE（可运行）
+      // 以便它能被调度器重新调度运行
+      // 当进程被 kill 时，可能正因为等待某个事件而处于睡眠状态（如调用 sleep() 等待资源）
+      // 如果此时不唤醒进程，它将一直停留在睡眠队列，无法检测到自己已被标记为“已杀死”，也就无法及时退出
+      // 通过将进程状态设置为 RUNNABLE，可以让调度器尽快调度该进程运行
+      // 进程被唤醒后，会在合适的时机检查自己的 killed 标志，并执行退出流程
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
@@ -780,7 +800,7 @@ kill(int pid)
     }
     release(&p->lock);
   }
-  return -1;
+  return -1; // 无法找到对应要终止的进程，返回 -1 
 }
 
 void
@@ -835,9 +855,23 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 // Print a process listing to console.  For debugging.
 // Runs when user types ^P on console.
 // No lock to avoid wedging a stuck machine further.
+// 该函数会将当前系统中所有进程的信息打印到控制台，主要用于调试（debugging）
+// 当用户在控制台输入 ^P（Ctrl+P）时，会触发运行此函数，方便开发者快速查看进程状态
+// 为了避免在系统卡死或异常时进一步导致死锁，procdump 在打印进程信息时不会加锁
+// 这种做法牺牲了一定的数据一致性，但能最大程度保证在系统异常时仍能输出有用的调试信息
 void
 procdump(void)
 {
+  // 定义了一个静态字符串数组 states[]，用于将进程状态的枚举值映射为对应的字符串
+  // 每个数组元素的下标对应一个进程状态的枚举常量（如 UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE）
+  // 而数组的内容则是这些状态的英文字符串
+
+  // 这种写法的好处是可以通过进程状态的枚举值直接索引到对应的字符串
+  // 方便在调试、日志输出或状态显示时，将内部的数值状态转换为易于理解的文本
+  // 例如，如果某个进程的状态为 RUNNING，则可以通过 states[RUNNING] 得到字符串 "run   "
+
+  //  这种数组初始化方式利用了 C 语言的“指定初始化器”特性
+  // 确保即使枚举值不是连续的，字符串和状态也能一一对应，避免出错
   static char *states[] = {
   [UNUSED]    "unused",
   [USED]      "used",
@@ -853,11 +887,13 @@ procdump(void)
   for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == UNUSED)
       continue;
+    // p->state >= 0 && p->state < NELEM(states): 判断进程状态 p->state 是否在有效范围内
+    // states[p->state]：进一步判断对应下标的字符串指针是否非空，确保该状态有对应的字符串描述
     if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
+    printf("%d %s %s", p->pid, state, p->name); // 打印进程的id，状态，名字
     printf("\n");
   }
 }

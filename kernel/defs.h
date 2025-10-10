@@ -273,8 +273,33 @@ pagetable_t     proc_pagetable(struct proc *);
  * 
  */
 void            proc_freepagetable(pagetable_t, uint64);
+/**
+ * @brief 向指定 pid 的进程发送终止信号，请求操作系统内核终止该进程
+ * 调用后，内核会将目标进程标记为“已杀死”
+ * 并在适当的时机（如进程下次被调度或执行系统调用时）将其安全终止
+ * 
+ * @param pid 进程标识符
+ * 
+ * @return int 0 表示成功，-1 表示失败（如找不到对应的进程）
+ * 
+ */
 int             kill(int);
+/**
+ * @brief 检查指定进程是否被标记为“已杀死”
+ * 在 xv6 这样的操作系统内核中，进程可能会被其他进程或内核自身请求终止（如通过 kill 命令或异常处理）
+ * 该函数通常会检查进程结构体中的某个标志位（如 killed 字段）
+ * 
+ * @return int 如果进程已被请求终止，则返回非零值，否则返回 0
+ * 
+ */
 int             killed(struct proc*);
+
+/**
+ * @brief 向指定的进程发送终止信号
+ * 
+ * @param proc 进程结构指针
+ * 
+ */
 void            setkilled(struct proc*);
 
 /**
@@ -354,6 +379,18 @@ void            sleep(void*, struct spinlock*);
  * 
  */
 void            userinit(void);
+
+/**
+ * @brief 当前进程回收某个已经终止的子进程
+ * 当有子进程退出时，wait 会回收该子进程的资源，并将其退出状态写入 addr 指向的内存
+ * 
+ * @param addr 一个用户空间内存地址，用于存放子进程的退出状态
+ * 
+ * @return int 返回值为被回收子进程的 PID，如果没有子进程可等待，则返回 -1
+ * 
+ * 用于实现父子进程之间的同步和资源管理，确保父进程能够获知子进程的退出信息并及时回收系统资源
+ * 
+ */
 int             wait(uint64);
 
 /**
@@ -375,8 +412,37 @@ void            wakeup(void*);
  * 
  */
 void            yield(void);
+
+/**
+ * @brief 根据 user_dst 的值，决定将数据从内核缓冲区复制到用户空间（需要地址转换和权限检查）或直接复制到内核空间
+ * 
+ * @param user_dst 0: 内核空间，非0：用户空间
+ * @param dst 目标地址，可以是用户虚拟地址或内核地址，取决于 user_dst 的值
+ * @param src 源数据的指针，通常指向内核空间的缓冲区
+ * @param len 要复制的数据字节数
+ * @return int 0 表示复制成功，-1 表示失败（如地址非法或权限不足）
+ * 
+ */
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+
+/**
+ * @brief 根据 user_src 的值，决定将数据从用户空间（需要地址转换和权限检查）或内核空间 复制到内核空间的缓冲区
+ * 
+ * @param dst 目标数据的指针，通常指向内核空间的缓冲区
+ * @param user_src 0: 内核空间，非0：用户空间
+ * @param src 源数据的地址，根据use_src 决定是内核缓冲区或 用户空间
+ * @param len 要复制的数据字节数
+ * @return int 0 表示复制成功，-1 表示失败（如地址非法或权限不足）
+ * 
+ */
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+
+/**
+ * @brief 打印当前系统中所有进程的状态信息
+ * 
+ * 通常包括进程的 PID、状态、名称、父进程等
+ * 它常用于内核调试或系统监控，帮助开发者或管理员了解进程的分布和运行情况
+ */
 void            procdump(void);
 
 // swtch.S
@@ -693,6 +759,18 @@ void            uvmclear(pagetable_t, uint64);
  */
 pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
+/**
+ * @brief 内核空间的数据复制到用户空间的指定虚拟地址
+ * 根据目标进程的页表进行地址转换和权限检查，确保数据安全地从内核传递到用户进程
+ * 
+ * @param pagetable 目标进程的页表，表示要写入的用户虚拟地址空间
+ * @param dstva 目标虚拟地址，指定用户空间中的写入起始地址
+ * @param src 内核缓冲区的指针，表示要复制的数据来源
+ * @param len 要复制的数据字节数
+ * 
+ * @return int 返回 0 表示复制成功，-1 表示失败（如地址非法或权限不足）
+ * 
+ */
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
