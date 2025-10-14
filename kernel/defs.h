@@ -588,11 +588,72 @@ int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 
 // syscall.c
+/**
+ * @brief 在系统调用处理过程中，从当前进程的系统调用参数中提取第 n 个参数，并将其作为 int 类型存储到指定的内存地址中
+ * 
+ * @param n 系统调用中的第n个参数
+ * @param ip int 指针（内核空间）
+ * 
+ * @return 无
+ */
 void            argint(int, int*);
+
+/**
+ * @brief 从当前进程的系统调用参数中提取第 n 个参数，并将其作为字符串类型存储到指定的内存地址中
+ * 
+ * @param n 系统调用中的第n个参数
+ * @param buf 内核空间内的字符串缓冲区指针
+ * @param max 缓冲区的最大长度
+ * 
+ * @return int 成功为实际复制的字符数，或在出错时返回负值
+ * 
+ */
 int             argstr(int, char*, int);
+
+/**
+ * @brief 从当前进程的系统调用参数中提取第 n 个参数，并将其作为 64 位地址（指针）类型存储到指定的内存地址中
+ * 
+ * @param n 系统调用中的第n个参数
+ * @param ip 地址指针（内核空间）
+ * 
+ * @return 无
+ */
 void            argaddr(int, uint64 *);
+
+/**
+ * @brief 从当前进程的用户空间内存中安全地读取一个以 null 结尾的字符串，并将其复制到内核空间的缓冲区中
+ * 
+ * 函数会检查字符串是否越界、是否以 NUL 结尾，并确保不会超过指定的最大长度
+ * 
+ * @param addr 用户空间中的虚拟地址，指向要读取的字符串的起始位置
+ * @param buf 指向内核空间的缓冲区，用于存放从用户空间复制过来的字符串
+ * @param max 指定缓冲区的最大长度，防止字符串过长导致缓冲区溢出
+ * 
+ * @return int 0 表示成功，-1 表示失败
+ * 
+ */
 int             fetchstr(uint64, char*, int);
+
+/**
+ * @brief 从当前进程的用户空间内存中安全地读取一个 uint64 类型的数据到内核空间下
+ * 
+ * @param addr 当前进程的用户空间虚拟地址addr 
+ * @param ip 指向内核空间的 uint64 类型变量的指针
+ * 
+ * @return int 0 表示成功，-1 表示失败
+ * 
+ */
 int             fetchaddr(uint64, uint64*);
+
+/**
+ * @brief 操作系统内核中用于处理系统调用的核心入口函数 
+ * 
+ * 当用户进程通过特殊指令（如 ecall）请求内核服务时，CPU 会陷入内核并跳转到 syscall()
+ * 该函数负责解析系统调用号、提取参数、分发到对应的系统调用处理函数，并将结果返回给用户进程
+ * 
+ * 这种设计实现了用户态与内核态的受控交互，是操作系统安全和功能扩展的基础
+ * 
+ */
 void            syscall();
 
 // trap.c
