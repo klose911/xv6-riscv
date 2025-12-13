@@ -57,7 +57,16 @@ void            consoleintr(int);
  */
 void            consputc(int);
 
-// exec.c
+// exec.c 
+/**
+ * @brief 当前进程中加载并运行指定的可执行文件，用新的程序替换当前进程的代码和数据
+ * 调用成功后，当前进程变成新程序，原有的代码不会再执行
+ * 
+ * @param path 指向要执行的程序路径（通常是可执行文件的文件名或路径）
+ * @param argv 指向参数字符串数组的指针，每个元素是传递给新程序的一个参数，最后一个元素必须是 0（即空指针）
+ * 
+ * @return int 通常只有在出错时才会返回（如找不到文件或参数错误），成功时不会返回
+ */
 int             exec(char*, char**);
 
 // file.c
@@ -742,10 +751,11 @@ void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
  * @return int 返回 0 表示成功，返回 -1 表示失败
  */
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
+
 /**
  * @brief 创建并初始化一个新的用户页表
  * 
- * @return pagetable_t 创建后的用户进程页表地址，返回 0 代表内存不够分配
+ * @return pagetable_t 创建后的用户进程页表的物理地址，返回 0 代表内存不够分配
  * 
  * 通常会分配一组用于虚拟内存管理的数据结构，并设置好初始的映射关系（如空页表或只包含必要的内核映射）
  * 
@@ -765,7 +775,28 @@ pagetable_t     uvmcreate(void);
  * 
  */
 void            uvmfirst(pagetable_t, uchar *, uint);
+
+/**
+ * @brief 分配页表项（PTEs）和物理内存，以便将进程的地址空间从 oldsz 扩展到 newsz
+ *
+ * @param pagetable 用户页表指针
+ * @param oldsz 旧的虚拟地址空间大小
+ * @param newsz 新的虚拟地址空间大小
+ * @param xperm 访问权限标志
+ *
+ * @return uint64 返回操作完成后进程的地址空间大小，失败返回 0
+ * 
+ */
 uint64          uvmalloc(pagetable_t, uint64, uint64, int);
+/**
+ * @brief 释放（解除分配）用户空间的内存页，使进程的地址空间从 oldsz 缩小到 newsz
+ * 
+ * @param pagetable 用户页表指针
+ * @param oldsz 旧的虚拟地址空间大小
+ * @param newsz 新的虚拟地址空间大小
+ * 
+ * @return uint64 返回操作完成后进程的地址空间大小，失败返回 0
+ */
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
 
 /**
@@ -792,6 +823,7 @@ int             uvmcopy(pagetable_t, pagetable_t, uint64);
  * 
  */
 void            uvmfree(pagetable_t, uint64);
+
 /**
  * @brief 将指定虚拟地址范围从页表中解除映射
  * 
@@ -806,6 +838,16 @@ void            uvmfree(pagetable_t, uint64);
  * 
  */
 void            uvmunmap(pagetable_t, uint64, uint64, int);
+
+/**
+ * @brief 指定的页表中，将虚拟地址 va 对应的页表项的用户访问权限清除
+ * 通常是去掉 PTE_U 标志，使该页不再允许用户态访问
+ * 
+ *
+ * @param pagetable 页表指针
+ * @param va 虚拟地址
+ *
+ */
 void            uvmclear(pagetable_t, uint64);
 
 /**
@@ -819,6 +861,18 @@ void            uvmclear(pagetable_t, uint64);
  * 
  */
 pte_t *         walk(pagetable_t, uint64, int);
+
+/**
+ * @brief 查找虚拟地址 va 对应的物理地址
+ * 如果该虚拟地址有有效的映射，函数返回对应的物理地址（通常是页帧的物理地址加上页内偏移）
+ * 如果没有有效映射，则返回 0 ，表示查找失败
+ * 
+ * @param pagetable 页表指针 
+ * @param va 虚拟地址
+ * 
+ * @return uint64 成功 返回对应的物理地址，失败 返回 0
+ * 
+ */
 uint64          walkaddr(pagetable_t, uint64);
 /**
  * @brief 内核空间的数据复制到用户空间的指定虚拟地址
@@ -833,7 +887,32 @@ uint64          walkaddr(pagetable_t, uint64);
  * 
  */
 int             copyout(pagetable_t, uint64, char *, uint64);
+
+/**
+ * @brief 从用户空间的指定虚拟地址复制数据到内核空间缓冲区
+ * 
+ * @param pagetable 源进程的页表，表示要读取的用户虚拟地址空间
+ * @param dst 内核缓冲区的指针，表示要复制的数据目标
+ * @param srcva 用户虚拟地址，指定要读取的起始地址
+ * @param len 要复制的数据字节数
+ *
+ * @return int 返回 0 表示复制成功，-1 表示失败（如地址非法或权限不足）
+ * 
+ */
 int             copyin(pagetable_t, char *, uint64, uint64);
+
+/**
+ * @brief 从用户空间的指定虚拟地址复制一个以 null 结尾的字符串到内核空间缓冲区
+ * 
+ * @param pagetable 源进程的页表，表示要读取的用户虚拟地址空间
+ * @param dst 内核缓冲区的指针，表示要复制的字符串目标
+ * @param srcva 用户虚拟地址，指定要读取的字符串起始地址
+ * @param max 最大复制长度，防止缓冲区溢出
+ * 
+ * @return int 返回 0 表示复制成功，-1 表示失败
+ * 注意：复制了max个字符，但没有以'\0'结尾也会返回 -1
+ * 
+ */
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
 // plic.c
