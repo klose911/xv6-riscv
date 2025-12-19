@@ -37,7 +37,7 @@ struct run {
 };
 
 /**
- * @brief 内存分配器的自旋锁
+ * @brief 内存分配器的全局状态结构体
  * 
  */
 struct {
