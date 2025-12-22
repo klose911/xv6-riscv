@@ -73,13 +73,14 @@
 #define WriteReg(reg, v) (*(Reg(reg)) = (v)) // 向指定 UART 寄存器写入值 v
 
 // the transmit output buffer.
-struct spinlock uart_tx_lock;
-#define UART_TX_BUF_SIZE 32
-char uart_tx_buf[UART_TX_BUF_SIZE];
+struct spinlock uart_tx_lock; // 用于保护 UART 发送缓冲区的自旋锁
+#define UART_TX_BUF_SIZE 32 // 定义 UART 发送缓冲区的大小为 32 字节
+char uart_tx_buf[UART_TX_BUF_SIZE]; // UART 发送缓冲区
+// 缓冲区读写指针
 uint64 uart_tx_w; // write next to uart_tx_buf[uart_tx_w % UART_TX_BUF_SIZE]
 uint64 uart_tx_r; // read next from uart_tx_buf[uart_tx_r % UART_TX_BUF_SIZE]
 
-extern volatile int panicked; // from printf.c
+extern volatile int panicked; // from printf.c 
 
 void uartstart();
 
@@ -87,28 +88,28 @@ void
 uartinit(void)
 {
   // disable interrupts.
-  WriteReg(IER, 0x00);
+  WriteReg(IER, 0x00); // 禁用所有 UART 中断
 
   // special mode to set baud rate.
-  WriteReg(LCR, LCR_BAUD_LATCH);
+  WriteReg(LCR, LCR_BAUD_LATCH); // 进入设置波特率的特殊模式
 
   // LSB for baud rate of 38.4K.
-  WriteReg(0, 0x03);
+  WriteReg(0, 0x03); // 设置波特率的最低有效字节（LSB）
 
   // MSB for baud rate of 38.4K.
-  WriteReg(1, 0x00);
+  WriteReg(1, 0x00); // 设置波特率的最高有效字节（MSB）
 
   // leave set-baud mode,
   // and set word length to 8 bits, no parity.
-  WriteReg(LCR, LCR_EIGHT_BITS);
+  WriteReg(LCR, LCR_EIGHT_BITS); // 退出设置波特率模式，设置数据位长度为 8 位，无奇偶校验
 
   // reset and enable FIFOs.
-  WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR);
+  WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR); // 启用 FIFO 并清空接收和发送 FIFO
 
   // enable transmit and receive interrupts.
-  WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
+  WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE); // 启用发送和接收中断
 
-  initlock(&uart_tx_lock, "uart");
+  initlock(&uart_tx_lock, "uart"); // 初始化用于保护 UART 发送缓冲区的自旋锁
 }
 
 // add a character to the output buffer and tell the
@@ -207,19 +208,25 @@ uartgetc(void)
 // handle a uart interrupt, raised because input has
 // arrived, or the uart is ready for more output, or
 // both. called from devintr().
+
+// 当 UART 设备产生中断时（可能是因为有新数据到达，或者发送缓冲区可以继续发送数据），系统会调用该函数进行响应
+// 该函数通常由设备中断分发函数 devintr() 调用
 void
 uartintr(void)
 {
   // read and process incoming characters.
+  // 循环读取和处理UART 接收到的字符
   while(1){
-    int c = uartgetc();
-    if(c == -1)
+    int c = uartgetc(); // 从 UART 读取一个输入字符
+    if(c == -1) // 如果没有新字符可读，跳出循环
       break;
-    consoleintr(c);
+    consoleintr(c); // 通常是将字符传递给控制台输入处理逻辑，比如命令行或终端
   }
 
   // send buffered characters.
+  // 发送缓冲区中的字符
+  // 注意：需要给缓存区加锁，以避免不同线程同时访问引发数据竞争
   acquire(&uart_tx_lock);
-  uartstart();
+  uartstart(); // 调用 uartstart() 发送缓冲区中的字符
   release(&uart_tx_lock);
 }
