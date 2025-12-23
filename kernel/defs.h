@@ -726,8 +726,34 @@ void            uartinit(void);
  * 
  */
 void            uartintr(void);
+
+/**
+ * @brief 通过 UART（通用异步收发传输器）发送的一个字符或字节
+ * 
+ * @param c 要发送的字符或字节
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartputc(int);
+
+/**
+ * @brief 单个字符直接发送到 UART
+ * 不使用中断或环形缓冲区，而是轮询等待发送寄存器空闲后再写入
+ * 因此是阻塞的“忙等”实现，适合内核 printf()、回显等需要立即输出的场景
+ * 
+ * @param c 要发送的字符或字节
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartputc_sync(int);
+
+/**
+ * @brief 获取 UART（串口）接收到的一个字符
+ * 
+ * @return int 返回接收到的字符的 ASCII 码，若无数据则返回 -1
+ */
 int             uartgetc(void);
 
 // vm.c 虚拟内存管理
