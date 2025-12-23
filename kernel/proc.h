@@ -42,7 +42,7 @@ struct cpu {
   // 指向当前正在该 CPU 上运行的进程结构体。如果没有进程在运行，则为 null。
   struct proc *proc;          // The process running on this cpu, or null.
 
-  // 该 CPU 的上下文信息。当需要切换到调度器（scheduler）时，会通过 swtch() 函数切换到这里保存的上下文
+  // 该 CPU 的调度器进程的上下文信息。当需要切换到调度器（scheduler）时，会通过 swtch() 函数切换到这里保存的上下文
   // 这样可以在进程切换时恢复 CPU 的寄存器状态
   struct context context;     // swtch() here to enter scheduler().
 
@@ -184,7 +184,7 @@ struct proc {
   pagetable_t pagetable;       // User page table
   // trapframe 用于保存进程在发生中断或系统调用时的寄存器状态
   struct trapframe *trapframe; // data page for trampoline.S
-  // 上下文结构体，支持进程切换时保存和恢复 CPU 状态
+  // 上下文结构体，支持进程切换时保存和恢复 CPU 状态，进程不允许的时候寄存器的值
   struct context context;      // swtch() here to run process
   // 进程的打开文件列表，最多支持 NOFILE 个文件
   struct file *ofile[NOFILE];  // Open files
