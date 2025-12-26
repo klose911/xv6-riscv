@@ -705,11 +705,55 @@ extern struct spinlock tickslock; // 全局时钟自旋锁
  */
 void            usertrapret(void);
 
-// uart.c
+// uart.c uart 驱动
+/**
+ * 
+ * @brief 初始化 UART（通用异步收发传输器）硬件模块
+ * 在启动时调用该函数，用于配置 UART 的波特率、数据格式、中断使能等参数，并确保串口通信功能可以正常工作
+ * 初始化后，系统就可以通过 UART 进行数据收发、调试输出或与外部设备通信
+ * 
+ * @param void 无参数
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartinit(void);
+
+/**
+ * @brief 处理 UART（串口）相关的中断服务程序
+ * 当 UART 设备产生中断（例如收到数据或发送缓冲区空闲时），操作系统或驱动会调用该函数来响应和处理这些事件
+ * 具体实现通常会读取或写入 UART 的硬件寄存器，完成数据的收发或缓冲区管理
+ * 
+ */
 void            uartintr(void);
+
+/**
+ * @brief 通过 UART（通用异步收发传输器）发送的一个字符或字节
+ * 
+ * @param c 要发送的字符或字节
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartputc(int);
+
+/**
+ * @brief 单个字符直接发送到 UART
+ * 不使用中断或环形缓冲区，而是轮询等待发送寄存器空闲后再写入
+ * 因此是阻塞的“忙等”实现，适合内核 printf()、回显等需要立即输出的场景
+ * 
+ * @param c 要发送的字符或字节
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartputc_sync(int);
+
+/**
+ * @brief 获取 UART（串口）接收到的一个字符
+ * 
+ * @return int 返回接收到的字符的 ASCII 码，若无数据则返回 -1
+ */
 int             uartgetc(void);
 
 // vm.c 虚拟内存管理
