@@ -169,10 +169,75 @@ void            log_write(struct buf*);
 void            begin_op(void);
 void            end_op(void);
 
-// pipe.c
+// pipe.c 管道相关函数
+/**
+ * @brief 分配一个管道，并返回两个文件结构体指针，分别用于读写管道
+ * 创建一个管道对象，并通过两个“指向指针的指针”参数把管道的两端作为 struct file* 返回给调用者：
+ *  第一个是读端，第二个是写端
+ * 
+ * 使用双重指针是因为函数需要向调用者“写回”这两个指针的值
+ * 
+ * @param f0 指向读端文件结构体指针的指针
+ * @param f1 指向写端文件结构体指针的指针
+ * 
+ * @return int 返回 0 表示成功，-1 表示失败
+ * 成功时，这两个 file 结构会被初始化为管道类型（FD_PIPE），并设置读写权限（读端可读、写端可写）
+ * 并且它们共享同一个底层 struct pipe 缓冲与锁
+ * 
+ * 失败路径中会负责清理已分配的资源，调用者应检查返回值并在失败时避免继续使用返回的文件指针
+ * 
+ * @note 管道是一种半双工通信机制，数据只能单向流动
+ * @note 调用者需要传入可写的变量地址，并在成功后将这两个文件对象安装到进程的文件描述符表中
+ * 后续的资源释放通过 fileclose/pipeclose 完成
+ * @note 并发安全在实现内部通过自旋锁维护，避免读写端竞争导致的数据破坏
+ * 
+ * @example 
+ *   struct file *rf = 0, *wf = 0;
+ *   if (pipealloc(&rf, &wf) < 0) {
+      // 处理错误：返回到用户态或清理
+     } else {
+      // 将 rf、wf 安装到进程的 fd 表，并返回两个 fd 给用户
+     }
+ *
+ */
 int             pipealloc(struct file**, struct file**);
+
+/**
+ * @brief 关闭管道的一端
+ * 据第二个参数判断关闭读端还是写端，更新管道结构中的相应标志（例如 readopen/writeopen）
+ * 唤醒仍在睡眠等待的对端（使用与 sleep 对应的等待通道，如 &pi->nread 或 &pi->nwrite）
+ * 以及当两端都关闭时释放管道占用的资源（例如释放内存并清理结构）
+ * 
+ * @param pi 指向管道对象的指针
+ * @param writable 指示关闭的是写端（非零值）还是读端（零值） 
+ * 
+ * @return void
+ * 
+ */
 void            pipeclose(struct pipe*, int);
+
+/**
+ * @brief 从指定的管道对象中读取最多 n 字节数据到用户空间缓冲区地址中，并返回实际读取的字节数 
+ * 
+ * @param pi 指向管道对象的指针
+ * @param addr 用户空间缓冲区的起始地址
+ * @param n 要读取的最大字节数
+ * 
+ * @return int 实际读取的字节数，当写端已关闭且管道中没有数据时，返回 0 作为 EOF；出现错误时返回 −1
+ * 
+ */
 int             piperead(struct pipe*, uint64, int);
+
+/**
+ * @brief 向指定的管道对象中写入最多 n 字节数据，从用户空间缓冲区地址中读取数据，并返回实际写入的字节数
+ * 
+ * @param pi 指向管道对象的指针
+ * @param addr 用户空间缓冲区的起始地址
+ * @param n 要写入的最大字节数
+ * 
+ * @return int 实际写入的字节数，当读端已关闭时返回 -1；出现错误时返回 -1
+ * 
+ */
 int             pipewrite(struct pipe*, uint64, int);
 
 // printf.c
