@@ -161,7 +161,7 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-
+  // prevents race in allocating proc[] slots for new process 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock); // 获取该进程的自旋锁，防止并发访问
     if(p->state == UNUSED) {
@@ -478,14 +478,18 @@ exit(int status)
   acquire(&wait_lock);
 
   // Give any children to init.
-  reparent(p); // 重新设置所有子进程的父进程为 initproc 
+  reparent(p); // 重新设置“当前进程p的所有子进程”的父进程为 initproc 
 
   // Parent might be sleeping in wait().
-  wakeup(p->parent); // 唤醒所有等待“当前进程的父进程”的进程
-  
-  // 注意：这个获取的进程锁，只有在wait调用的时候，所有资源清理完才会释放
+  // 在修改子进程之前状态之前，唤醒等待当前进程的wait函数，粗看不安全，但实际上
+  // 即使现在wait函数被提前唤醒，也无法看不到子进程已经变成ZOMBIE状态
+  // 只有子进程先获取p->lock，再修改状态为ZOMBIE，才可见
+  wakeup(p->parent); // 唤醒可能在等待“当前进程退出”的父进程
+
+  // 注意：这个获取的进程锁，在进入调度器之后
+  // 等待调度器切换到wait函数，在返回子进程退出状态之后的时候释放 pp->lock
   // 因此这里并不会调用 release 
-  acquire(&p->lock); // 获取当前进程的进程锁
+  acquire(&p->lock); // 获取当前进程的进程锁，防止parent在此之前看到不一致的状态
 
   p->xstate = status; // 设置返回的状态码
   p->state = ZOMBIE; // 设置状态为 ZOMBIE, 等待init进程清理
@@ -522,6 +526,8 @@ wait(uint64 addr)
         // 因此，后续代码会先对子进程加锁，确保在安全的状态下检查和操作子进程，避免并发访问带来的问题
         acquire(&pp->lock);
 
+        // 注意：这里加锁的顺序，必须是先获取 wait_lock，再获取 子进程 pp 的锁，避免死锁
+        // 这个顺序和 exit 里面获取锁的顺序是一样的
         havekids = 1;
         if(pp->state == ZOMBIE){ // 找到某个已经终止的进程
           // Found one.
