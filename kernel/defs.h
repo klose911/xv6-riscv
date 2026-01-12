@@ -1054,7 +1054,23 @@ void            plic_complete(int);
  * 
  */
 void            virtio_disk_init(void);
+
+/**
+ * @brief 执行对 Virtio 磁盘设备的读写操作
+ * 
+ * @param buf 指向缓冲区结构体的指针，包含要读写的数据和相关元数据
+ * @param write 如果为非零值，则表示写操作；否则为读操作
+ * 
+ */
 void            virtio_disk_rw(struct buf *, int);
+
+/**
+ * @brief 处理 Virtio 磁盘设备的中断
+ * 
+ * 当 Virtio 设备完成一个 I/O 操作时，会触发一个中断
+ * 该函数负责响应该中断，检查 I/O 操作的状态，并唤醒等待该操作完成的进程
+ * 
+ */
 void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
