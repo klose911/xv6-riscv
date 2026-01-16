@@ -18,10 +18,54 @@ struct superblock;
  * 
  */
 void            binit(void);
+
+/**
+ * @brief 读取指定设备和块号的磁盘块缓冲区 
+ * 返回一个锁定的缓冲区，包含指定设备和块号的磁盘块内容
+ * 
+ * @param dev 设备号 
+ * @param blockno 块号 
+ * 
+ * @return struct buf* 指向已锁定的缓冲区结构体指针，如果所有缓冲区都被占用则触发内核奔溃
+ *  
+ */
 struct buf*     bread(uint, uint);
+
+/**
+ * @brief 释放一个已锁定的缓冲区，将其从使用中状态变为可用状态 
+ * 
+ * @param b 指向要释放的缓冲区结构体指针 
+ * 
+ * @return void 无返回值
+ * 
+ */
 void            brelse(struct buf*);
+
+/**
+ * @brief 将缓冲区的数据写回到磁盘 
+ * 必须在调用该函数前锁定缓冲区
+ * 
+ * @param b 指向要写回的缓冲区结构体指针 
+ * 
+ * @return void 无返回值
+ * 
+ */
 void            bwrite(struct buf*);
+
+/**
+ * @brief 增加缓冲区的引用计数，防止其被释放
+ * 
+ * @param b 指向要固定的缓冲区结构体指针
+ * 
+ */
 void            bpin(struct buf*);
+
+/**
+ * @brief 减少缓冲区的引用计数，允许其被释放 
+ * 
+ * @param b 指向要解固定的缓冲区结构体指针
+ * 
+ */
 void            bunpin(struct buf*);
 
 // console.c 控制台功能
