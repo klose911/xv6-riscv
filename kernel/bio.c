@@ -66,6 +66,11 @@ binit(void)
   // 遍历所有缓冲区数组元素，为每个缓冲区分配链表位置和锁
   for(b = bcache.buf; b < bcache.buf+NBUF; b++){
     // 将当前缓冲区插入到链表头部（最近使用的位置） 
+    // 所谓的LRU的头部，满足一下条件：
+    // 1. 它的next指针指向当前链表的第一个元素（即head.next） 
+    // 2. 它的prev指针指向链表头结点（head） 
+    // 3. 更新原第一个元素的prev指针，指向新插入的缓冲区
+    // 4. 更新链表头结点的next指针，指向新插入的缓冲区
     b->next = bcache.head.next; 
     b->prev = &bcache.head; 
     initsleeplock(&b->lock, "buffer"); // 初始化每个缓冲区的互斥锁，用于保护缓冲区数据的并发访问
@@ -160,6 +165,8 @@ brelse(struct buf *b)
   if (b->refcnt == 0) { // 如果引用计数为0，表示没有进程在使用该缓冲区
     // no one is waiting for it.
     // 将缓冲区从链表中暂时移除
+    // 1. 更新下一个缓冲区的prev指针，跳过当前缓冲区
+    // 2. 更新上一个缓冲区的next指针，跳过当前缓冲区
     b->next->prev = b->prev; 
     b->prev->next = b->next; 
     // 将缓冲区移动到链表头部，表示最近被使用过
