@@ -208,9 +208,33 @@ void            kfree(void *);
 void            kinit(void);
 
 // log.c
+/**
+ * @brief 初始化简易事务日志系统
+ * 
+ * @param dev 设备号
+ * @param sb 指向超级块结构体的指针
+ * 
+ */
 void            initlog(int, struct superblock*);
+
+/**
+ * @brief 将修改过的缓冲区数据记录到日志中，以便后续提交
+ * 
+ * @param b 指向已修改的缓冲区结构体指针 
+ * 
+ */
 void            log_write(struct buf*);
+
+/**
+ * @brief 开始一个文件系统操作事务
+ * 
+ */
 void            begin_op(void);
+
+/**
+ * @brief 结束一个文件系统操作事务
+ * 
+ */
 void            end_op(void);
 
 // pipe.c 管道相关函数
