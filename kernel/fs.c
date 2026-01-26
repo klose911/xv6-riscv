@@ -62,46 +62,64 @@ bzero(int dev, int bno)
 
 // Allocate a zeroed disk block.
 // returns 0 if out of disk space.
+
+/**
+ * @brief 分配一个空闲的磁盘块，并将其内容清零
+ * 
+ * @param dev 设备号
+ * 
+ * @return uint 返回分配的块号，如果没有可用块则返回 0
+ */
 static uint
 balloc(uint dev)
 {
-  int b, bi, m;
-  struct buf *bp;
+  int b, bi, m; 
+  struct buf *bp; 
 
   bp = 0;
-  for(b = 0; b < sb.size; b += BPB){
-    bp = bread(dev, BBLOCK(b, sb));
-    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
-      m = 1 << (bi % 8);
-      if((bp->data[bi/8] & m) == 0){  // Is block free?
-        bp->data[bi/8] |= m;  // Mark block in use.
-        log_write(bp);
-        brelse(bp);
-        bzero(dev, b + bi);
-        return b + bi;
+  for(b = 0; b < sb.size; b += BPB){ // 遍历所有bitmap块组
+    bp = bread(dev, BBLOCK(b, sb)); // 读取bitmap块
+    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){ // 遍历bitmap块中的每个位
+      // bi % 8 计算当前位在字节中的位置 
+      // 1 << (bi % 8) 生成对应的掩码 
+      m = 1 << (bi % 8); // 计算当前位的掩码, 用于检查和设置该位
+      // bp->data[bi/8] 访问对应字节
+      // & m 检查该位是否为0，表示对应块是空闲
+      if((bp->data[bi/8] & m) == 0){  // Is block free? 检查该位是否为0，表示对应块是空闲的 
+        bp->data[bi/8] |= m;  // Mark block in use. 设置该位为1，表示对应块已被分配 
+        log_write(bp); // 写日志以记录对bitmap块的修改
+        brelse(bp); // 释放bitmap块缓冲区
+        bzero(dev, b + bi); // 清零新分配的块
+        return b + bi; // 返回分配的块号
       }
     }
-    brelse(bp);
+    brelse(bp); // 释放bitmap块缓冲区
   }
-  printf("balloc: out of blocks\n");
-  return 0;
+  printf("balloc: out of blocks\n"); // 没有可用块
+  return 0; // 返回0表示分配失败
 }
 
 // Free a disk block.
+/**
+ * @brief 释放指定的磁盘块
+ * 
+ * @param dev 设备号
+ * @param b 块号
+ */
 static void
 bfree(int dev, uint b)
 {
   struct buf *bp;
   int bi, m;
 
-  bp = bread(dev, BBLOCK(b, sb));
-  bi = b % BPB;
-  m = 1 << (bi % 8);
-  if((bp->data[bi/8] & m) == 0)
-    panic("freeing free block");
-  bp->data[bi/8] &= ~m;
-  log_write(bp);
-  brelse(bp);
+  bp = bread(dev, BBLOCK(b, sb)); // 读取包含块 b 的位图块
+  bi = b % BPB; // 计算块 b 在位图块中的偏移量
+  m = 1 << (bi % 8); // 计算当前位的掩码, 用于检查和设置该位 
+  if((bp->data[bi/8] & m) == 0) // 如果该位已经是0，表示块未被分配 
+    panic("freeing free block"); // 抛出错误，尝试释放未分配的块 
+  bp->data[bi/8] &= ~m; // 将该位清零，表示块已被释放 
+  log_write(bp); // 写日志以记录对位图块的修改 
+  brelse(bp); // 释放位图块缓冲区
 }
 
 // Inodes.
