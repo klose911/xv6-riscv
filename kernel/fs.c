@@ -24,26 +24,35 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 // there should be one superblock per disk device, but we run with
 // only one device
-struct superblock sb; 
+// 每个设备应该有一个超级块，但我们只运行一个设备 
+struct superblock sb;  // 超级快
 
 // Read the super block.
+
+/**
+ * @brief 读取指定设备的超级块信息到内存
+ * 
+ * @param dev 设备号
+ * @param sb 指向超级块结构体的指针
+ * 
+ */
 static void
 readsb(int dev, struct superblock *sb)
 {
   struct buf *bp;
 
-  bp = bread(dev, 1);
-  memmove(sb, bp->data, sizeof(*sb));
-  brelse(bp);
+  bp = bread(dev, 1); // 读取设备 dev 上的第 1 块数据（超级块通常存储在块号 1）
+  memmove(sb, bp->data, sizeof(*sb)); // 将读取到的超级块数据复制到 sb 指向的内存区域
+  brelse(bp); // 释放缓冲区
 }
 
 // Init fs
 void
 fsinit(int dev) {
-  readsb(dev, &sb);
-  if(sb.magic != FSMAGIC)
+  readsb(dev, &sb); // 读取超级块到全局变量 sb 中
+  if(sb.magic != FSMAGIC) // 检查超级块的魔数是否正确
     panic("invalid file system");
-  initlog(dev, &sb);
+  initlog(dev, &sb); // 初始化日志系统
 }
 
 // Zero a block.
