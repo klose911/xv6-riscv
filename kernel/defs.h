@@ -128,10 +128,35 @@ int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
 
 // fs.c
+/**
+ * @brief 初始化文件分区系统
+ * 
+ * @param dev 设备号
+ * 
+ */
 void            fsinit(int);
 int             dirlink(struct inode*, char*, uint);
 struct inode*   dirlookup(struct inode*, char*, uint*);
+
+/**
+ * @brief 分配一个新的 inode，并将其类型设置为指定类型
+ * 
+ * @param dev 设备号
+ * @param type 指定的 inode 类型（如文件、目录等） 
+ * 
+ * @return struct inode* 指向分配的 inode 结构体指针，如果没有可用 inode 则返回 NULL
+ * 
+ */
 struct inode*   ialloc(uint, short);
+
+/**
+ * @brief 增加指定 inode 的引用计数，防止其被释放
+ * 
+ * @param ip 指向要增加引用计数的 inode 结构体指针
+ * 
+ * @return struct inode* 返回传入的 inode 指针
+ * 
+ */
 struct inode*   idup(struct inode*);
 
 /**
@@ -141,6 +166,13 @@ struct inode*   idup(struct inode*);
  * 
  */
 void            iinit();
+
+/**
+ * @brief 锁定指定的 inode，确保对其的独占访问
+ * 
+ * @param ip 指向要锁定的 inode 结构体指针
+ * 
+ */
 void            ilock(struct inode*);
 
 /**
@@ -153,8 +185,29 @@ void            ilock(struct inode*);
  * 
  */
 void            iput(struct inode*);
+
+/**
+ * @brief 解锁指定的 inode，允许其他进程访问
+ * 
+ * @param ip 指向要解锁的 inode 结构体指针
+ * 
+ */
 void            iunlock(struct inode*);
+
+/**
+ * @brief 解锁指定的 inode 并递减其引用计数 
+ * 
+ * @param ip 指向要解锁并递减引用计数的 inode 结构体指针 
+ * 
+ */
 void            iunlockput(struct inode*);
+
+/**
+ * @brief 更新指定 inode 的元数据信息到磁盘
+ * 
+ * @param ip 指向要更新的 inode 结构体指针
+ * 
+ */
 void            iupdate(struct inode*);
 int             namecmp(const char*, const char*);
 /**
@@ -171,9 +224,50 @@ int             namecmp(const char*, const char*);
  */
 struct inode*   namei(char*);
 struct inode*   nameiparent(char*, char*);
+
+/**
+ * @brief 从indoe读取数据
+ * 
+ * @param struct inode* ip 指向要读取数据的 inode 结构体指针
+ * @param int user_dst 指示目标地址是用户空间地址（非零）还是内核空间地址（零）
+ * @param uint64 dst 目标地址，数据将被读取到该地址
+ * @param uint off 偏移量，从 inode 的哪个位置开始读取数据
+ * @param uint n 要读取的字节数
+ * 
+ * @return int 实际读取的字节数，如果读取过程中发生错误则返回-1， 如果无法读取任何数据则返回0
+ * 
+ */
 int             readi(struct inode*, int, uint64, uint, uint);
+
+/**
+ * @brief 读取指定 inode 的元数据信息并填充到 stat 结构体中 
+ * 
+ * @param struct inode* ip 指向要读取元数据的 inode 结构体指针 
+ * @param struct stat* st 指向用于存放元数据的 stat 结构体指针
+ * 
+ */
 void            stati(struct inode*, struct stat*);
+
+/**
+ * @brief 向指定 inode 写入数据
+ * 
+ * @param struct inode* ip 指向要写入数据的 inode 结构体指针
+ * @param int user_src 指示源地址是用户空间地址（非零）还是内核空间地址（零）
+ * @param uint64 src 源地址，数据将从该地址写入 inode
+ * @param uint off 偏移量，从 inode 的哪个位置开始写入数据
+ * @param uint n 要写入的字节数
+ * 
+ * @return int 实际写入的字节数，如果返回值小于请求的 n，则表示发生了某种错误
+ * 
+ */
 int             writei(struct inode*, int, uint64, uint, uint);
+
+/**
+ * @brief 释放某个inode和其中的数据块
+ * 
+ * @param struct inode* 指向要释放的 inode 结构体指针 
+ * 
+ */
 void            itrunc(struct inode*);
 
 // ramdisk.c
@@ -208,9 +302,33 @@ void            kfree(void *);
 void            kinit(void);
 
 // log.c
+/**
+ * @brief 初始化简易事务日志系统
+ * 
+ * @param dev 设备号
+ * @param sb 指向超级块结构体的指针
+ * 
+ */
 void            initlog(int, struct superblock*);
+
+/**
+ * @brief 将修改过的缓冲区数据记录到日志中，以便后续提交
+ * 
+ * @param b 指向已修改的缓冲区结构体指针 
+ * 
+ */
 void            log_write(struct buf*);
+
+/**
+ * @brief 开始一个文件系统操作事务
+ * 
+ */
 void            begin_op(void);
+
+/**
+ * @brief 结束一个文件系统操作事务
+ * 
+ */
 void            end_op(void);
 
 // pipe.c 管道相关函数
