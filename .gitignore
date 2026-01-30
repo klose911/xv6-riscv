@@ -20,3 +20,4 @@ compile
 compile_commands.json
 TAGS
 .cache/
+.clangd
