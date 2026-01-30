@@ -4,10 +4,18 @@
 //   + Files: inode allocator, reading, writing, metadata.
 //   + Directories: inode with special contents (list of other inodes!)
 //   + Names: paths like /usr/rtm/xv6/fs.c for convenient naming.
-//
+// 文件系统实现。五个层级：
+// + 块：原始磁盘块的分配器
+// + 日志：多步骤更新的崩溃恢复
+// + 文件：inode分配器，读写，元数据
+// + 目录：具有特殊内容的inode（其他inode的列表！）
+// + 名称：像/usr/rtm/xv6/fs.c这样的路径，方便命名
+
 // This file contains the low-level file system manipulation
 // routines.  The (higher-level) system call implementations
 // are in sysfile.c.
+// 该文件包含低级文件系统操作例程
+// （更高级别的）系统调用实现位于 sysfile.c 中
 
 #include "types.h"
 #include "riscv.h"
@@ -137,95 +145,69 @@ bfree(int dev, uint b)
 // The inode disk structure holds metadata: the file's type,
 // its size, the number of links referring to it, and the
 // list of blocks holding the file's content.
-// 
+// inode 是用于描述单个文件的核心数据结构，磁盘上的 inode 结构保存了文件的元数据
+// 包括文件类型、大小、引用计数（链接数）以及存放文件内容的磁盘块列表
+
 // The inodes are laid out sequentially on disk at block
 // sb.inodestart. Each inode has a number, indicating its
 // position on the disk.
-//
+// 所有 inode 在磁盘上按顺序排列，每个 inode 都有唯一编号，标识其在磁盘上的位置
+
 // The kernel keeps a table of in-use inodes in memory
 // to provide a place for synchronizing access
 // to inodes used by multiple processes. The in-memory
 // inodes include book-keeping information that is
 // not stored on disk: ip->ref and ip->valid.
-//
+// 内核会在内存中维护一个 inode 表，用于同步多进程对 inode 的访问
+// 内存中的 inode 除了磁盘上的信息，还包含一些仅用于内存管理的字段
+// 比如引用计数（ip->ref）和有效性标志（ip->valid）
+
 // An inode and its in-memory representation go through a
 // sequence of states before they can be used by the
 // rest of the file system code.
-//
+// 一个inode及其内存表示在被文件系统代码使用前，会经历几个状态阶段： 
+
 // * Allocation: an inode is allocated if its type (on disk)
 //   is non-zero. ialloc() allocates, and iput() frees if
 //   the reference and link counts have fallen to zero.
-//
+// 分配：
+//      当 inode 的类型非零时表示已分配
+//      通过 ialloc() 分配 inode
+//      iput() 在引用和链接数都为零时释放 inode
+
 // * Referencing in table: an entry in the inode table
 //   is free if ip->ref is zero. Otherwise ip->ref tracks
 //   the number of in-memory pointers to the entry (open
 //   files and current directories). iget() finds or
 //   creates a table entry and increments its ref; iput()
 //   decrements ref.
-//
+// 表引用：
+//      inode 表中的条目如果 ip->ref 为零则空闲，否则 ip->ref 记录有多少内存指针引用该 inode
+//      iget() 查找或创建表项并递增引用计数
+//      iput() 递减引用计数
+
 // * Valid: the information (type, size, &c) in an inode
 //   table entry is only correct when ip->valid is 1.
 //   ilock() reads the inode from
 //   the disk and sets ip->valid, while iput() clears
 //   ip->valid if ip->ref has fallen to zero.
-//
+// 有效：
+//      只有当 ip->valid 为 1 时，inode 表项中的信息才是正确的
+//      ilock() 从磁盘读取 inode 并设置 valid，
+//      iput() 在引用计数为零时清除 valid
+
 // * Locked: file system code may only examine and modify
 //   the information in an inode and its content if it
 //   has first locked the inode.
-//
+// 加锁：
+//      文件系统代码在访问或修改 inode 及其内容前，必须先锁定该 inode
+
 // Thus a typical sequence is:
 //   ip = iget(dev, inum)
 //   ilock(ip)
 //   ... examine and modify ip->xxx ...
 //   iunlock(ip)
 //   iput(ip)
-//
-// ilock() is separate from iget() so that system calls can
-// get a long-term reference to an inode (as for an open file)
-// and only lock it for short periods (e.g., in read()).
-// The separation also helps avoid deadlock and races during
-// pathname lookup. iget() increments ip->ref so that the inode
-// stays in the table and pointers to it remain valid.
-//
-// Many internal file system functions expect the caller to
-// have locked the inodes involved; this lets callers create
-// multi-step atomic operations.
-//
-// The itable.lock spin-lock protects the allocation of itable
-// entries. Since ip->ref indicates whether an entry is free,
-// and ip->dev and ip->inum indicate which i-node an entry
-// holds, one must hold itable.lock while using any of those fields.
-//
-// An ip->lock sleep-lock protects all ip-> fields other than ref,
-// dev, and inum.  One must hold ip->lock in order to
-// read or write that inode's ip->valid, ip->size, ip->type, &c.
-
-// Inodes 
-// inode 是用于描述单个文件的核心数据结构，磁盘上的 inode 结构保存了文件的元数据
-// 包括文件类型、大小、引用计数（链接数）以及存放文件内容的磁盘块列表
-// 
-// 所有 inode 在磁盘上按顺序排列，每个 inode 都有唯一编号，标识其在磁盘上的位置
-// 
-// 内核会在内存中维护一个 inode 表，用于同步多进程对 inode 的访问
-// 内存中的 inode 除了磁盘上的信息，还包含一些仅用于内存管理的字段
-// 比如引用计数（ip->ref）和有效性标志（ip->valid）
-// 
-// inode 的生命周期分为几个阶段：
-// 分配：
-//      当 inode 的类型非零时表示已分配
-//      通过 ialloc() 分配 inode
-//      iput() 在引用和链接数都为零时释放 inode
-// 表引用：
-//      inode 表中的条目如果 ip->ref 为零则空闲，否则 ip->ref 记录有多少内存指针引用该 inode
-//      iget() 查找或创建表项并递增引用计数
-//      iput() 递减引用计数
-// 有效：
-//      只有当 ip->valid 为 1 时，inode 表项中的信息才是正确的
-//      ilock() 从磁盘读取 inode 并设置 valid，
-//      iput() 在引用计数为零时清除 valid
-// 加锁：
-//      文件系统代码在访问或修改 inode 及其内容前，必须先锁定该 inode
-
 // 典型的 inode 操作流程是：
 //   ip = iget(dev, inum) // 通过 iget() 获取 inode
 //   ilock(ip) // 对inode加锁
@@ -233,15 +215,32 @@ bfree(int dev, uint b)
 //   iunlock(ip) // 对inode解锁
 //   iput(ip) // 释放inode 
 
+// ilock() is separate from iget() so that system calls can
+// get a long-term reference to an inode (as for an open file)
+// and only lock it for short periods (e.g., in read()).
+// The separation also helps avoid deadlock and races during
+// pathname lookup. iget() increments ip->ref so that the inode
+// stays in the table and pointers to it remain valid.
 // ilock() 和 iget() 分离
 // 便于系统调用长期持有 inode 引用但只在需要时短暂加锁，减少死锁和竞争风险
 // iget() 增加引用计数，保证 inode 在表中不会被移除
 
+// Many internal file system functions expect the caller to
+// have locked the inodes involved; this lets callers create
+// multi-step atomic operations.
 // 许多文件系统内部函数要求调用者已锁定相关 inode，以便实现多步原子操作
 
+// The itable.lock spin-lock protects the allocation of itable
+// entries. Since ip->ref indicates whether an entry is free,
+// and ip->dev and ip->inum indicate which i-node an entry
+// holds, one must hold itable.lock while using any of those fields.
 // inode 表的分配由 itable.lock 自旋锁保护
 // 只有持有该锁才能安全操作 ip->ref、ip->dev 和 ip->inum
-// 除了这些字段外，其他 inode 字段由 ip->lock 互斥锁保护
+
+// An ip->lock sleep-lock protects all ip-> fields other than ref,
+// dev, and inum.  One must hold ip->lock in order to
+// read or write that inode's ip->valid, ip->size, ip->type, &c.
+// 除了这些字段外，其他 inode 字段由 ip->lock 睡眠锁保护
 // 必须持有该锁才能读写 ip->valid、ip->size、ip->type 等信息
 
 /**
@@ -272,135 +271,164 @@ static struct inode* iget(uint dev, uint inum);
 // Mark it as allocated by  giving it type type.
 // Returns an unlocked but allocated and referenced inode,
 // or NULL if there is no free inode.
+// 在设备 dev 上分配一个 inode
+// 通过设置类型 type 将其标记为已分配
+// 返回一个未加锁但已分配和引用的 inode
+// 如果没有可用的 inode 则返回 NULL
 struct inode*
 ialloc(uint dev, short type)
 {
-  int inum;
-  struct buf *bp;
-  struct dinode *dip;
+  int inum; // inode 编号
+  struct buf *bp; // 缓冲区指针
+  struct dinode *dip; // 磁盘 inode 指针
 
-  for(inum = 1; inum < sb.ninodes; inum++){
-    bp = bread(dev, IBLOCK(inum, sb));
-    dip = (struct dinode*)bp->data + inum%IPB;
-    if(dip->type == 0){  // a free inode
-      memset(dip, 0, sizeof(*dip));
-      dip->type = type;
-      log_write(bp);   // mark it allocated on the disk
-      brelse(bp);
-      return iget(dev, inum);
+  for(inum = 1; inum < sb.ninodes; inum++){ // 遍历所有 inode 编号，跳过编号 0
+    bp = bread(dev, IBLOCK(inum, sb)); // 读取包含 inode inum 的磁盘块 
+    dip = (struct dinode*)bp->data + inum%IPB; // 计算 inode 在块内的偏移位置
+    if(dip->type == 0){  // a free inode 找到一个空闲的 inode
+      // 初始化磁盘 inode 结构
+      memset(dip, 0, sizeof(*dip)); // 清零 inode 结构
+      dip->type = type; // 设置 inode 类型
+      log_write(bp);   // mark it allocated on the disk // 写日志以记录对 inode 的修改
+      brelse(bp); // 释放缓冲区
+      return iget(dev, inum); // 返回对应的内存 inode 结构体指针
     }
-    brelse(bp);
+    brelse(bp); // 释放缓冲区
   }
-  printf("ialloc: no inodes\n");
-  return 0;
+  printf("ialloc: no inodes\n"); // 没有可用的 inode
+  return 0; // 没有可用的 inode，返回 NULL
 }
 
 // Copy a modified in-memory inode to disk.
 // Must be called after every change to an ip->xxx field
 // that lives on disk.
 // Caller must hold ip->lock.
+
+// 将修改后的内存中 inode 复制到磁盘
+// 必须在每次修改 ip->xxx 字段后调用
+// 调用者必须持有 ip->lock
 void
 iupdate(struct inode *ip)
 {
   struct buf *bp;
   struct dinode *dip;
 
-  bp = bread(ip->dev, IBLOCK(ip->inum, sb));
-  dip = (struct dinode*)bp->data + ip->inum%IPB;
-  dip->type = ip->type;
-  dip->major = ip->major;
-  dip->minor = ip->minor;
-  dip->nlink = ip->nlink;
-  dip->size = ip->size;
-  memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
-  log_write(bp);
-  brelse(bp);
+  bp = bread(ip->dev, IBLOCK(ip->inum, sb)); // 读取包含 inode 的磁盘块
+  dip = (struct dinode*)bp->data + ip->inum%IPB; // 计算 inode 在块内的偏移位置
+  dip->type = ip->type; // 更新磁盘 inode 的类型
+  dip->major = ip->major; // 更新主设备号
+  dip->minor = ip->minor; // 更新次设备号
+  dip->nlink = ip->nlink; // 更新链接数
+  dip->size = ip->size; // 更新文件大小
+  memmove(dip->addrs, ip->addrs, sizeof(ip->addrs)); // 更新数据块地址数组
+  log_write(bp); // 写日志以记录对 inode 的修改
+  brelse(bp); // 释放缓冲区
 }
 
 // Find the inode with number inum on device dev
 // and return the in-memory copy. Does not lock
 // the inode and does not read it from disk.
+// 根据inode编号从给定设备返回对应的内存中inode结构体指针
+// 并不会锁定该inode，也不会从磁盘读取它 
+
+/**
+ * @brief 读取inode对应的内存结构体指针 
+ * 
+ * @param dev 设备号
+ * @param inum inode编号
+ * 
+ * @return struct inode* 指向对应的内存inode结构体指针 
+ * 
+ * @note 调用该函数不会锁定inode，也不会从磁盘读取它
+ *  
+ */
 static struct inode*
 iget(uint dev, uint inum)
 {
   struct inode *ip, *empty;
 
-  acquire(&itable.lock);
+  acquire(&itable.lock); // 获取 inode 表的自旋锁
 
   // Is the inode already in the table?
-  empty = 0;
-  for(ip = &itable.inode[0]; ip < &itable.inode[NINODE]; ip++){
-    if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){
-      ip->ref++;
-      release(&itable.lock);
-      return ip;
+  empty = 0; // 是否存在于内存inode表中 
+  for(ip = &itable.inode[0]; ip < &itable.inode[NINODE]; ip++){ // 遍历 inode 表中的每个 inode 条目
+    if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){ // 找到匹配的 inode
+      ip->ref++; // 增加引用计数
+      release(&itable.lock); // 释放 inode 表的自旋锁
+      return ip; // 返回找到的 inode 指针
     }
-    if(empty == 0 && ip->ref == 0)    // Remember empty slot.
+    if(empty == 0 && ip->ref == 0)    // Remember empty slot. 记录第一个找到的空闲槽位 
       empty = ip;
   }
 
   // Recycle an inode entry.
-  if(empty == 0)
-    panic("iget: no inodes");
+  if(empty == 0) // 没有可用的 inode 条目
+    panic("iget: no inodes"); // 抛出错误 
 
-  ip = empty;
-  ip->dev = dev;
-  ip->inum = inum;
-  ip->ref = 1;
-  ip->valid = 0;
-  release(&itable.lock);
+  ip = empty; // 使用空闲的 inode 条目
+  ip->dev = dev; // 设置设备号
+  ip->inum = inum; // 设置 inode 编号
+  ip->ref = 1; // 初始化引用计数为 1
+  ip->valid = 0; // 标记为无效，表示尚未从磁盘读取
+  release(&itable.lock); // 释放 inode 表的自旋锁
 
-  return ip;
+  return ip; // 返回新的 inode 指针
 }
 
 // Increment reference count for ip.
 // Returns ip to enable ip = idup(ip1) idiom.
+// 增加 inode 的引用计数
+// 返回传入的 inode 指针，以支持 ip = idup(ip1) 的用法
 struct inode*
 idup(struct inode *ip)
 {
-  acquire(&itable.lock);
-  ip->ref++;
-  release(&itable.lock);
-  return ip;
+  acquire(&itable.lock); // 获取 inode 表的自旋锁
+  ip->ref++; // 增加引用计数
+  release(&itable.lock); // 释放 inode 表的自旋锁
+  return ip; // 返回 传入的inode 指针
 }
 
 // Lock the given inode.
 // Reads the inode from disk if necessary.
+
+// 锁定给定的 inode
+// 如果有必要，从磁盘读取该 inode
 void
 ilock(struct inode *ip)
 {
   struct buf *bp;
   struct dinode *dip;
 
-  if(ip == 0 || ip->ref < 1)
-    panic("ilock");
+  if(ip == 0 || ip->ref < 1) // 无效的 inode 指针或引用计数小于 1
+    panic("ilock"); // 内核奔溃
 
-  acquiresleep(&ip->lock);
+  acquiresleep(&ip->lock); // 获取 inode 的互斥锁
 
-  if(ip->valid == 0){
-    bp = bread(ip->dev, IBLOCK(ip->inum, sb));
-    dip = (struct dinode*)bp->data + ip->inum%IPB;
-    ip->type = dip->type;
-    ip->major = dip->major;
-    ip->minor = dip->minor;
-    ip->nlink = dip->nlink;
-    ip->size = dip->size;
-    memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
-    brelse(bp);
-    ip->valid = 1;
-    if(ip->type == 0)
-      panic("ilock: no type");
+  if(ip->valid == 0){ // 需要从磁盘读取 inode
+    bp = bread(ip->dev, IBLOCK(ip->inum, sb)); // 读取包含 inode 的磁盘块
+    dip = (struct dinode*)bp->data + ip->inum%IPB; // 计算 inode 在块内的偏移位置
+    ip->type = dip->type; // 设置 inode 类型
+    ip->major = dip->major; // 设置主设备号
+    ip->minor = dip->minor; // 设置次设备号
+    ip->nlink = dip->nlink; // 设置链接数
+    ip->size = dip->size; // 设置文件大小
+    memmove(ip->addrs, dip->addrs, sizeof(ip->addrs)); // 从dip复制数据块地址数组到ip
+    brelse(bp); // 释放bp缓冲区
+    ip->valid = 1; // 标记 inode 为有效
+    if(ip->type == 0) // 检查 inode 类型是否为0
+      panic("ilock: no type"); // 内核奔溃
   }
 }
 
 // Unlock the given inode.
+// 释放给定的 inode
 void
 iunlock(struct inode *ip)
 {
-  if(ip == 0 || !holdingsleep(&ip->lock) || ip->ref < 1)
-    panic("iunlock");
+  if(ip == 0 || !holdingsleep(&ip->lock) || ip->ref < 1) // 无效的 inode 指针 || 未持有锁 || 引用计数小于 1
+    panic("iunlock"); // 内核奔溃
 
-  releasesleep(&ip->lock);
+  releasesleep(&ip->lock); // 释放 inode 的互斥锁
 }
 
 // Drop a reference to an in-memory inode.
@@ -410,95 +438,121 @@ iunlock(struct inode *ip)
 // to it, free the inode (and its content) on disk.
 // All calls to iput() must be inside a transaction in
 // case it has to free the inode.
+// 递减内存中某个inode的引用计数 
+// 如果这是最后一个引用，则该inode表项可以被回收 
+// 如果这是最后一个引用且该inode没有链接到它，则释放磁盘上的inode及其内容
+// 所有对iput()的调用都必须在一个事务内，以防它需要释放inode 
 void
 iput(struct inode *ip)
 {
-  acquire(&itable.lock);
+  acquire(&itable.lock); // 获取 inode 表的自旋锁
 
-  if(ip->ref == 1 && ip->valid && ip->nlink == 0){
+  if(ip->ref == 1 && ip->valid && ip->nlink == 0){ // 如果这是“最后一个引用”且 “inode有效”且 “没有链接”
     // inode has no links and no other references: truncate and free.
+    // inode没用任何引用: 释放inode及其内容 
 
     // ip->ref == 1 means no other process can have ip locked,
-    // so this acquiresleep() won't block (or deadlock).
-    acquiresleep(&ip->lock);
+    // so this acquiresleep() won't block (or deadlock). 
+    // ip->ref == 1 意味着没有其他进程可以锁定 ip
+    // 因此这个 acquiresleep() 不会阻塞（或死锁）
+    acquiresleep(&ip->lock); // 获取 inode 的互斥锁 
 
-    release(&itable.lock);
+    release(&itable.lock); // 释放 inode 表的自旋锁
 
-    itrunc(ip);
-    ip->type = 0;
-    iupdate(ip);
-    ip->valid = 0;
+    itrunc(ip); // 释放 inode 的内容
+    ip->type = 0; // 标记 inode 为未分配
+    iupdate(ip); // 将修改写回磁盘
+    ip->valid = 0; // 标记 inode 为无效
 
-    releasesleep(&ip->lock);
+    releasesleep(&ip->lock); // 释放 inode 的互斥锁
 
-    acquire(&itable.lock);
+    acquire(&itable.lock); // 重新获取 inode 表的自旋锁
   }
 
-  ip->ref--;
-  release(&itable.lock);
+  ip->ref--; // 递减引用计数
+  release(&itable.lock); // 释放 inode 表的自旋锁
 }
 
-// Common idiom: unlock, then put.
+// Common idiom: unlock, then put. 
+// 释放锁，然后释放 inode
 void
 iunlockput(struct inode *ip)
 {
-  iunlock(ip);
-  iput(ip);
+  iunlock(ip); // 释放 inode 的睡眠锁
+  iput(ip); // 递减 inode 的引用计数
 }
 
 // Inode content
-//
+// Inode 内容
+
 // The content (data) associated with each inode is stored
 // in blocks on the disk. The first NDIRECT block numbers
 // are listed in ip->addrs[].  The next NINDIRECT blocks are
 // listed in block ip->addrs[NDIRECT].
+// 每个inode的数据内容存储在磁盘块中. 第一个 NDIRECT 块号保存在 ip->addrs[] 数组中
+// 接下啦NINDIRECT 块，则需要保存在以 ip->addrs[NDIRECT] 为块号的“间接块的data域”中 
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
 // returns 0 if out of disk space.
+// 返回 inode ip 中第 n 个块的磁盘块地址
+// 如果没有这样的块，bmap 会分配一个
+// 如果没有可用的磁盘空间则返回 0
+
+/**
+ * @brief 获取inode中第bn个块的磁盘地址
+ * 
+ * @param ip 指向inode结构体的指针
+ * @param bn 块号
+ * 
+ * @return uint 磁盘块地址，失败 返回0
+ * 
+ */
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
 
-  if(bn < NDIRECT){
-    if((addr = ip->addrs[bn]) == 0){
-      addr = balloc(ip->dev);
-      if(addr == 0)
-        return 0;
-      ip->addrs[bn] = addr;
+  if(bn < NDIRECT){ // 直接块
+    if((addr = ip->addrs[bn]) == 0){ // 如果直接块地址为0，表示未分配
+      addr = balloc(ip->dev); // 分配一个新的磁盘块
+      if(addr == 0) // 分配失败
+        return 0; // 返回0表示失败
+      ip->addrs[bn] = addr; // 更新直接块地址
     }
-    return addr;
+    return addr; // 返回直接块地址
   }
-  bn -= NDIRECT;
+  bn -= NDIRECT; // 间接块
 
   if(bn < NINDIRECT){
     // Load indirect block, allocating if necessary.
-    if((addr = ip->addrs[NDIRECT]) == 0){
-      addr = balloc(ip->dev);
-      if(addr == 0)
-        return 0;
-      ip->addrs[NDIRECT] = addr;
+    // 加载间接块，如果有必要则分配
+    if((addr = ip->addrs[NDIRECT]) == 0){ // 如果间接块地址为0，表示未分配
+      addr = balloc(ip->dev); // 分配一个新的磁盘块作为间接块
+      if(addr == 0) // 分配失败
+        return 0; // 返回0表示失败
+      ip->addrs[NDIRECT] = addr; // 更新间接块地址
     }
-    bp = bread(ip->dev, addr);
-    a = (uint*)bp->data;
-    if((addr = a[bn]) == 0){
-      addr = balloc(ip->dev);
-      if(addr){
-        a[bn] = addr;
-        log_write(bp);
+    bp = bread(ip->dev, addr); // 读取间接块
+    a = (uint*)bp->data; // 获取间接块中的块地址数组
+    if((addr = a[bn]) == 0){ // 如果间接块地址为0，表示未分配
+      addr = balloc(ip->dev); // 分配一个新的磁盘块
+      if(addr){ // 分配成功
+        a[bn] = addr; // 更新间接块地址数组
+        log_write(bp); // 写日志以记录对间接块的修改
       }
     }
-    brelse(bp);
-    return addr;
+    brelse(bp); // 释放间接块缓冲区
+    return addr; // 返回间接块地址
   }
 
-  panic("bmap: out of range");
+  panic("bmap: out of range"); // 块号超出范围
 }
 
 // Truncate inode (discard contents).
 // Caller must hold ip->lock.
+// 释放 inode (丢弃内容) 调用者必须持有 ip->lock 
 void
 itrunc(struct inode *ip)
 {
@@ -506,70 +560,83 @@ itrunc(struct inode *ip)
   struct buf *bp;
   uint *a;
 
-  for(i = 0; i < NDIRECT; i++){
-    if(ip->addrs[i]){
-      bfree(ip->dev, ip->addrs[i]);
-      ip->addrs[i] = 0;
+  for(i = 0; i < NDIRECT; i++){ // 释放inode中的直接块
+    if(ip->addrs[i]){ // 如果直接块有效
+      bfree(ip->dev, ip->addrs[i]); // 释放直接块 
+      ip->addrs[i] = 0; // 清除直接块地址
     }
   }
 
-  if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
-    a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
-      if(a[j])
-        bfree(ip->dev, a[j]);
+  if(ip->addrs[NDIRECT]){ // 释放inode中的间接块
+    bp = bread(ip->dev, ip->addrs[NDIRECT]); // 读取间接块
+    a = (uint*)bp->data; // 获取间接块中的块地址数组
+    for(j = 0; j < NINDIRECT; j++){ // 遍历间接块中的每个块地址
+      if(a[j]) // 如果块地址有效
+        bfree(ip->dev, a[j]); // 释放该块
     }
-    brelse(bp);
-    bfree(ip->dev, ip->addrs[NDIRECT]);
-    ip->addrs[NDIRECT] = 0;
+    brelse(bp); // 释放间接块缓冲区
+    bfree(ip->dev, ip->addrs[NDIRECT]); // 释放间接块本身
+    ip->addrs[NDIRECT] = 0; // 清除间接块地址
   }
 
-  ip->size = 0;
-  iupdate(ip);
+  ip->size = 0; // 重置文件大小为0
+  iupdate(ip); // 将修改写回磁盘
 }
 
 // Copy stat information from inode.
 // Caller must hold ip->lock.
+// 从 inode 复制状态信息 调用者必须持有 ip->lock 
 void
 stati(struct inode *ip, struct stat *st)
 {
-  st->dev = ip->dev;
-  st->ino = ip->inum;
-  st->type = ip->type;
-  st->nlink = ip->nlink;
-  st->size = ip->size;
+  st->dev = ip->dev; // 设备号
+  st->ino = ip->inum; // inode 编号
+  st->type = ip->type; // 文件类型
+  st->nlink = ip->nlink; // 链接数
+  st->size = ip->size; // 文件大小
 }
 
 // Read data from inode.
 // Caller must hold ip->lock.
 // If user_dst==1, then dst is a user virtual address;
 // otherwise, dst is a kernel address.
+
+// 从inode读取数据
+// 调用者必须持有ip->lock
+// 如果user_dst==1，则dst是用户虚拟地址；否则，dst是内核地址
 int
 readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
 
-  if(off > ip->size || off + n < off)
-    return 0;
-  if(off + n > ip->size)
-    n = ip->size - off;
+  // 1. off > ip->size 偏移量超出文件大小
+  // 2. off + n < off 偏移量加读取长度溢出 
+  if(off > ip->size || off + n < off) // 检查偏移量是否超出文件大小 
+    return 0; // 返回0表示读取失败
+  if(off + n > ip->size) // 确保不超出文件大小
+    n = ip->size - off; // 调整读取长度
 
-  for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
-    uint addr = bmap(ip, off/BSIZE);
-    if(addr == 0)
-      break;
-    bp = bread(ip->dev, addr);
-    m = min(n - tot, BSIZE - off%BSIZE);
-    if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
-      brelse(bp);
-      tot = -1;
-      break;
+  for(tot=0; tot<n; tot+=m, off+=m, dst+=m){ // 循环读取数据, 直到读取完指定长度, 每次读取 m 字节
+    uint addr = bmap(ip, off/BSIZE); // 获取对应块号的磁盘块地址
+    if(addr == 0) // 块地址为0，表示读取失败
+      break; // 退出循环
+    bp = bread(ip->dev, addr); // 读取磁盘块
+    // n - tot 表示本次还需要处理的总字节数：n 是用户请求的总字节数，tot 是已经处理过的字节数
+    // BSIZE - off%BSIZE 计算当前块中还剩多少字节可以用。BSIZE 是磁盘块的大小，off % BSIZE 得到当前偏移量在块内的位置
+    m = min(n - tot, BSIZE - off%BSIZE); // 计算本次读取的字节数
+    // 将数据复制到目标地址
+    // 目标地址：dst
+    // 源地址： bp->data + (off % BSIZE)，当前块的偏移位置off 
+    // 字数 m 字节
+    if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) { // 拷贝失败
+      brelse(bp); // 释放缓冲区
+      tot = -1; // 标记读取失败
+      break; // 退出循环
     }
-    brelse(bp);
+    brelse(bp); // 释放缓冲区
   }
-  return tot;
+  return tot; // 返回成功读取的总字节数
 }
 
 // Write data to inode.
@@ -579,40 +646,52 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 // Returns the number of bytes successfully written.
 // If the return value is less than the requested n,
 // there was an error of some kind.
+
+// 向 inode 写入数据 调用者必须持有 ip->lock
+// 如果 user_src==1，则 src 是用户虚拟地址；否则，src 是内核地址
+// 返回成功写入的字节数，如果返回值小于请求的 n，则表示发生了某种错误
 int
 writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
 
-  if(off > ip->size || off + n < off)
-    return -1;
-  if(off + n > MAXFILE*BSIZE)
-    return -1;
+  if(off > ip->size || off + n < off) // 检查偏移量是否超出文件大小或者是否off溢出
+    return -1; // 返回-1表示写入失败
+  if(off + n > MAXFILE*BSIZE) // 检查写入是否超出文件最大大小
+    return -1; // 返回-1表示写入失败
 
-  for(tot=0; tot<n; tot+=m, off+=m, src+=m){
-    uint addr = bmap(ip, off/BSIZE);
-    if(addr == 0)
-      break;
-    bp = bread(ip->dev, addr);
-    m = min(n - tot, BSIZE - off%BSIZE);
-    if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) {
-      brelse(bp);
-      break;
+  for(tot=0; tot<n; tot+=m, off+=m, src+=m){ // 循环写入数据, 直到写入完指定长度, 每次写入 m 字节
+    uint addr = bmap(ip, off/BSIZE); // 获取对应块号的磁盘块地址
+    if(addr == 0) // 块地址为0，表示写入失败
+      break; // 退出循环
+    bp = bread(ip->dev, addr); // 读取磁盘块
+    // n - tot 表示本次还需要处理的总字节数：n 是用户请求的总字节数，tot 是已经处理过的字节数
+    // BSIZE - off%BSIZE 计算当前块中还剩多少字节可以用。BSIZE 是磁盘块的大小，off % BSIZE 得到当前偏移量在块内的位置
+    m = min(n - tot, BSIZE - off%BSIZE); // 计算本次写入的字节数
+    // 将数据从源地址复制到磁盘块
+    // 源地址：src
+    // 目标地址：bp->data + (off % BSIZE)，当前块的偏移位置off 
+    // 字数 m 字节  
+    if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) { // 拷贝失败
+      brelse(bp); // 释放缓冲区
+      break; // 退出循环
     }
-    log_write(bp);
-    brelse(bp);
+    log_write(bp); // 写日志以记录对磁盘块的修改
+    brelse(bp); // 释放缓冲区
   }
 
-  if(off > ip->size)
-    ip->size = off;
+  if(off > ip->size) // 如果写入操作扩展了文件大小
+    ip->size = off; // 更新文件大小
 
   // write the i-node back to disk even if the size didn't change
   // because the loop above might have called bmap() and added a new
   // block to ip->addrs[].
-  iupdate(ip);
+  // 即使文件大小没有改变，也要将 inode 写回磁盘
+  // 因为上面的循环可能调用了 bmap() 并向 ip->addrs[] 添加了一个新块
+  iupdate(ip); // 将inode修改写回磁盘
 
-  return tot;
+  return tot; // 返回成功写入的总字节数
 }
 
 // Directories
