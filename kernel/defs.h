@@ -18,10 +18,54 @@ struct superblock;
  * 
  */
 void            binit(void);
+
+/**
+ * @brief 读取指定设备和块号的磁盘块缓冲区 
+ * 返回一个锁定的缓冲区，包含指定设备和块号的磁盘块内容
+ * 
+ * @param dev 设备号 
+ * @param blockno 块号 
+ * 
+ * @return struct buf* 指向已锁定的缓冲区结构体指针，如果所有缓冲区都被占用则触发内核奔溃
+ *  
+ */
 struct buf*     bread(uint, uint);
+
+/**
+ * @brief 释放一个已锁定的缓冲区，将其从使用中状态变为可用状态 
+ * 
+ * @param b 指向要释放的缓冲区结构体指针 
+ * 
+ * @return void 无返回值
+ * 
+ */
 void            brelse(struct buf*);
+
+/**
+ * @brief 将缓冲区的数据写回到磁盘 
+ * 必须在调用该函数前锁定缓冲区
+ * 
+ * @param b 指向要写回的缓冲区结构体指针 
+ * 
+ * @return void 无返回值
+ * 
+ */
 void            bwrite(struct buf*);
+
+/**
+ * @brief 增加缓冲区的引用计数，防止其被释放
+ * 
+ * @param b 指向要固定的缓冲区结构体指针
+ * 
+ */
 void            bpin(struct buf*);
+
+/**
+ * @brief 减少缓冲区的引用计数，允许其被释放 
+ * 
+ * @param b 指向要解固定的缓冲区结构体指针
+ * 
+ */
 void            bunpin(struct buf*);
 
 // console.c 控制台功能
@@ -84,10 +128,35 @@ int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
 
 // fs.c
+/**
+ * @brief 初始化文件分区系统
+ * 
+ * @param dev 设备号
+ * 
+ */
 void            fsinit(int);
 int             dirlink(struct inode*, char*, uint);
 struct inode*   dirlookup(struct inode*, char*, uint*);
+
+/**
+ * @brief 分配一个新的 inode，并将其类型设置为指定类型
+ * 
+ * @param dev 设备号
+ * @param type 指定的 inode 类型（如文件、目录等） 
+ * 
+ * @return struct inode* 指向分配的 inode 结构体指针，如果没有可用 inode 则返回 NULL
+ * 
+ */
 struct inode*   ialloc(uint, short);
+
+/**
+ * @brief 增加指定 inode 的引用计数，防止其被释放
+ * 
+ * @param ip 指向要增加引用计数的 inode 结构体指针
+ * 
+ * @return struct inode* 返回传入的 inode 指针
+ * 
+ */
 struct inode*   idup(struct inode*);
 
 /**
@@ -97,6 +166,13 @@ struct inode*   idup(struct inode*);
  * 
  */
 void            iinit();
+
+/**
+ * @brief 锁定指定的 inode，确保对其的独占访问
+ * 
+ * @param ip 指向要锁定的 inode 结构体指针
+ * 
+ */
 void            ilock(struct inode*);
 
 /**
@@ -109,8 +185,29 @@ void            ilock(struct inode*);
  * 
  */
 void            iput(struct inode*);
+
+/**
+ * @brief 解锁指定的 inode，允许其他进程访问
+ * 
+ * @param ip 指向要解锁的 inode 结构体指针
+ * 
+ */
 void            iunlock(struct inode*);
+
+/**
+ * @brief 解锁指定的 inode 并递减其引用计数 
+ * 
+ * @param ip 指向要解锁并递减引用计数的 inode 结构体指针 
+ * 
+ */
 void            iunlockput(struct inode*);
+
+/**
+ * @brief 更新指定 inode 的元数据信息到磁盘
+ * 
+ * @param ip 指向要更新的 inode 结构体指针
+ * 
+ */
 void            iupdate(struct inode*);
 int             namecmp(const char*, const char*);
 /**
@@ -127,9 +224,50 @@ int             namecmp(const char*, const char*);
  */
 struct inode*   namei(char*);
 struct inode*   nameiparent(char*, char*);
+
+/**
+ * @brief 从indoe读取数据
+ * 
+ * @param struct inode* ip 指向要读取数据的 inode 结构体指针
+ * @param int user_dst 指示目标地址是用户空间地址（非零）还是内核空间地址（零）
+ * @param uint64 dst 目标地址，数据将被读取到该地址
+ * @param uint off 偏移量，从 inode 的哪个位置开始读取数据
+ * @param uint n 要读取的字节数
+ * 
+ * @return int 实际读取的字节数，如果读取过程中发生错误则返回-1， 如果无法读取任何数据则返回0
+ * 
+ */
 int             readi(struct inode*, int, uint64, uint, uint);
+
+/**
+ * @brief 读取指定 inode 的元数据信息并填充到 stat 结构体中 
+ * 
+ * @param struct inode* ip 指向要读取元数据的 inode 结构体指针 
+ * @param struct stat* st 指向用于存放元数据的 stat 结构体指针
+ * 
+ */
 void            stati(struct inode*, struct stat*);
+
+/**
+ * @brief 向指定 inode 写入数据
+ * 
+ * @param struct inode* ip 指向要写入数据的 inode 结构体指针
+ * @param int user_src 指示源地址是用户空间地址（非零）还是内核空间地址（零）
+ * @param uint64 src 源地址，数据将从该地址写入 inode
+ * @param uint off 偏移量，从 inode 的哪个位置开始写入数据
+ * @param uint n 要写入的字节数
+ * 
+ * @return int 实际写入的字节数，如果返回值小于请求的 n，则表示发生了某种错误
+ * 
+ */
 int             writei(struct inode*, int, uint64, uint, uint);
+
+/**
+ * @brief 释放某个inode和其中的数据块
+ * 
+ * @param struct inode* 指向要释放的 inode 结构体指针 
+ * 
+ */
 void            itrunc(struct inode*);
 
 // ramdisk.c
@@ -164,15 +302,104 @@ void            kfree(void *);
 void            kinit(void);
 
 // log.c
+/**
+ * @brief 初始化简易事务日志系统
+ * 
+ * @param dev 设备号
+ * @param sb 指向超级块结构体的指针
+ * 
+ */
 void            initlog(int, struct superblock*);
+
+/**
+ * @brief 将修改过的缓冲区数据记录到日志中，以便后续提交
+ * 
+ * @param b 指向已修改的缓冲区结构体指针 
+ * 
+ */
 void            log_write(struct buf*);
+
+/**
+ * @brief 开始一个文件系统操作事务
+ * 
+ */
 void            begin_op(void);
+
+/**
+ * @brief 结束一个文件系统操作事务
+ * 
+ */
 void            end_op(void);
 
-// pipe.c
+// pipe.c 管道相关函数
+/**
+ * @brief 分配一个管道，并返回两个文件结构体指针，分别用于读写管道
+ * 创建一个管道对象，并通过两个“指向指针的指针”参数把管道的两端作为 struct file* 返回给调用者：
+ *  第一个是读端，第二个是写端
+ * 
+ * 使用双重指针是因为函数需要向调用者“写回”这两个指针的值
+ * 
+ * @param f0 指向读端文件结构体指针的指针
+ * @param f1 指向写端文件结构体指针的指针
+ * 
+ * @return int 返回 0 表示成功，-1 表示失败
+ * 成功时，这两个 file 结构会被初始化为管道类型（FD_PIPE），并设置读写权限（读端可读、写端可写）
+ * 并且它们共享同一个底层 struct pipe 缓冲与锁
+ * 
+ * 失败路径中会负责清理已分配的资源，调用者应检查返回值并在失败时避免继续使用返回的文件指针
+ * 
+ * @note 管道是一种半双工通信机制，数据只能单向流动
+ * @note 调用者需要传入可写的变量地址，并在成功后将这两个文件对象安装到进程的文件描述符表中
+ * 后续的资源释放通过 fileclose/pipeclose 完成
+ * @note 并发安全在实现内部通过自旋锁维护，避免读写端竞争导致的数据破坏
+ * 
+ * @example 
+ *   struct file *rf = 0, *wf = 0;
+ *   if (pipealloc(&rf, &wf) < 0) {
+      // 处理错误：返回到用户态或清理
+     } else {
+      // 将 rf、wf 安装到进程的 fd 表，并返回两个 fd 给用户
+     }
+ *
+ */
 int             pipealloc(struct file**, struct file**);
+
+/**
+ * @brief 关闭管道的一端
+ * 据第二个参数判断关闭读端还是写端，更新管道结构中的相应标志（例如 readopen/writeopen）
+ * 唤醒仍在睡眠等待的对端（使用与 sleep 对应的等待通道，如 &pi->nread 或 &pi->nwrite）
+ * 以及当两端都关闭时释放管道占用的资源（例如释放内存并清理结构）
+ * 
+ * @param pi 指向管道对象的指针
+ * @param writable 指示关闭的是写端（非零值）还是读端（零值） 
+ * 
+ * @return void
+ * 
+ */
 void            pipeclose(struct pipe*, int);
+
+/**
+ * @brief 从指定的管道对象中读取最多 n 字节数据到用户空间缓冲区地址中，并返回实际读取的字节数 
+ * 
+ * @param pi 指向管道对象的指针
+ * @param addr 用户空间缓冲区的起始地址
+ * @param n 要读取的最大字节数
+ * 
+ * @return int 实际读取的字节数，当写端已关闭且管道中没有数据时，返回 0 作为 EOF；出现错误时返回 −1
+ * 
+ */
 int             piperead(struct pipe*, uint64, int);
+
+/**
+ * @brief 向指定的管道对象中写入最多 n 字节数据，从用户空间缓冲区地址中读取数据，并返回实际写入的字节数
+ * 
+ * @param pi 指向管道对象的指针
+ * @param addr 用户空间缓冲区的起始地址
+ * @param n 要写入的最大字节数
+ * 
+ * @return int 实际写入的字节数，当读端已关闭时返回 -1；出现错误时返回 -1
+ * 
+ */
 int             pipewrite(struct pipe*, uint64, int);
 
 // printf.c
@@ -705,11 +932,55 @@ extern struct spinlock tickslock; // 全局时钟自旋锁
  */
 void            usertrapret(void);
 
-// uart.c
+// uart.c uart 驱动
+/**
+ * 
+ * @brief 初始化 UART（通用异步收发传输器）硬件模块
+ * 在启动时调用该函数，用于配置 UART 的波特率、数据格式、中断使能等参数，并确保串口通信功能可以正常工作
+ * 初始化后，系统就可以通过 UART 进行数据收发、调试输出或与外部设备通信
+ * 
+ * @param void 无参数
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartinit(void);
+
+/**
+ * @brief 处理 UART（串口）相关的中断服务程序
+ * 当 UART 设备产生中断（例如收到数据或发送缓冲区空闲时），操作系统或驱动会调用该函数来响应和处理这些事件
+ * 具体实现通常会读取或写入 UART 的硬件寄存器，完成数据的收发或缓冲区管理
+ * 
+ */
 void            uartintr(void);
+
+/**
+ * @brief 通过 UART（通用异步收发传输器）发送的一个字符或字节
+ * 
+ * @param c 要发送的字符或字节
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartputc(int);
+
+/**
+ * @brief 单个字符直接发送到 UART
+ * 不使用中断或环形缓冲区，而是轮询等待发送寄存器空闲后再写入
+ * 因此是阻塞的“忙等”实现，适合内核 printf()、回显等需要立即输出的场景
+ * 
+ * @param c 要发送的字符或字节
+ * 
+ * @return void 无返回
+ * 
+ */
 void            uartputc_sync(int);
+
+/**
+ * @brief 获取 UART（串口）接收到的一个字符
+ * 
+ * @return int 返回接收到的字符的 ASCII 码，若无数据则返回 -1
+ */
 int             uartgetc(void);
 
 // vm.c 虚拟内存管理
@@ -945,7 +1216,23 @@ void            plic_complete(int);
  * 
  */
 void            virtio_disk_init(void);
+
+/**
+ * @brief 执行对 Virtio 磁盘设备的读写操作
+ * 
+ * @param buf 指向缓冲区结构体的指针，包含要读写的数据和相关元数据
+ * @param write 如果为非零值，则表示写操作；否则为读操作
+ * 
+ */
 void            virtio_disk_rw(struct buf *, int);
+
+/**
+ * @brief 处理 Virtio 磁盘设备的中断
+ * 
+ * 当 Virtio 设备完成一个 I/O 操作时，会触发一个中断
+ * 该函数负责响应该中断，检查 I/O 操作的状态，并唤醒等待该操作完成的进程
+ * 
+ */
 void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
