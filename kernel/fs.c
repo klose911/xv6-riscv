@@ -699,31 +699,36 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
 int
 namecmp(const char *s, const char *t)
 {
-  return strncmp(s, t, DIRSIZ);
+  return strncmp(s, t, DIRSIZ); // 比较两个目录项名称，最多比较 DIRSIZ 个字符
 }
 
 // Look for a directory entry in a directory.
 // If found, set *poff to byte offset of entry.
+// 在目录nodep中查找目录项name
+// 如果找到，则将*poff设置为该目录项的字节偏移量
+// 返回该目录项对应的inode指针，如果未找到则返回NULL 
 struct inode*
 dirlookup(struct inode *dp, char *name, uint *poff)
 {
   uint off, inum;
   struct dirent de;
 
-  if(dp->type != T_DIR)
-    panic("dirlookup not DIR");
+  if(dp->type != T_DIR) // 检查inode类型是否为目录
+    panic("dirlookup not DIR"); // 尝试在非目录中查找目录项，内核奔溃
 
-  for(off = 0; off < dp->size; off += sizeof(de)){
-    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
-      panic("dirlookup read");
-    if(de.inum == 0)
+  for(off = 0; off < dp->size; off += sizeof(de)){ // 遍历目录中的每个目录项
+    // off 是目录项在目录文件中的偏移量
+    // de 是用于存储读取的目录项数据的结构体
+    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) // 读取目录项
+      panic("dirlookup read"); // 读取目录项失败, 内核奔溃
+    if(de.inum == 0) // 空目录项，跳过
       continue;
-    if(namecmp(name, de.name) == 0){
+    if(namecmp(name, de.name) == 0){ // 目录项名称匹配
       // entry matches path element
-      if(poff)
-        *poff = off;
-      inum = de.inum;
-      return iget(dp->dev, inum);
+      if(poff) // 如果传入了poff参数
+        *poff = off; // 设置目录项的字节偏移量
+      inum = de.inum; // 获取目录项对应的inode编号
+      return iget(dp->dev, inum); // 返回对应的inode指针
     }
   }
 
@@ -731,123 +736,158 @@ dirlookup(struct inode *dp, char *name, uint *poff)
 }
 
 // Write a new directory entry (name, inum) into the directory dp.
-// Returns 0 on success, -1 on failure (e.g. out of disk blocks).
+// Returns 0 on success, -1 on failure (e.g. out of disk blocks). 
+
+// 将新的目录项(name, inum)写入目录dp
+// 成功返回0，失败返回-1（例如磁盘块不足）
 int
 dirlink(struct inode *dp, char *name, uint inum)
 {
   int off;
-  struct dirent de;
+  struct dirent de; 
   struct inode *ip;
 
   // Check that name is not present.
-  if((ip = dirlookup(dp, name, 0)) != 0){
-    iput(ip);
-    return -1;
+  // 检查名称是否已存在
+  if((ip = dirlookup(dp, name, 0)) != 0){ // 目录项已存在
+    iput(ip); // 释放inode
+    return -1; // 返回-1表示失败
   }
 
   // Look for an empty dirent.
-  for(off = 0; off < dp->size; off += sizeof(de)){
-    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
-      panic("dirlink read");
-    if(de.inum == 0)
-      break;
+  // 查找一个空的目录项
+  for(off = 0; off < dp->size; off += sizeof(de)){ // 遍历目录中的每个目录项
+    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) // 读取目录项
+      panic("dirlink read"); // 读取目录项失败, 内核奔溃
+    if(de.inum == 0) // 找到一个空目录项
+      break; // 退出循环
   }
 
-  strncpy(de.name, name, DIRSIZ);
-  de.inum = inum;
-  if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
-    return -1;
+  strncpy(de.name, name, DIRSIZ); // 复制目录项名称，最多复制 DIRSIZ 个字符
+  de.inum = inum; // 设置目录项的inode编号
+  if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) // 写入目录项
+    return -1; // 返回-1表示失败
 
-  return 0;
+  return 0; // 返回0表示成功
 }
 
-// Paths
+// Paths 
+// 路径 
 
 // Copy the next path element from path into name.
 // Return a pointer to the element following the copied one.
 // The returned path has no leading slashes,
 // so the caller can check *path=='\0' to see if the name is the last one.
 // If no name to remove, return 0.
-//
+// 拷贝下一个路径元素从path到name，返回指向下一个路径元素的指针
+// 返回的路径里没有前导斜杠，因此调用者可以检查 *path=='\0' 来判断是否是最后一个元素
+// 如果没有元素可移除，则返回0
+
 // Examples:
 //   skipelem("a/bb/c", name) = "bb/c", setting name = "a"
 //   skipelem("///a//bb", name) = "bb", setting name = "a"
 //   skipelem("a", name) = "", setting name = "a"
 //   skipelem("", name) = skipelem("////", name) = 0
-//
+
+/**
+ * @brief 把path中的下一个路径元素复制到name中 
+ * 
+ * @param path 指向路径字符串的指针
+ * @param name 用于存储复制的路径元素，必须有足够空间（至少DIRSIZ字节） 
+ * @return char* 指向下一个路径元素的指针 
+ */
 static char*
 skipelem(char *path, char *name)
 {
   char *s;
   int len;
 
-  while(*path == '/')
-    path++;
-  if(*path == 0)
-    return 0;
-  s = path;
-  while(*path != '/' && *path != 0)
-    path++;
-  len = path - s;
-  if(len >= DIRSIZ)
-    memmove(name, s, DIRSIZ);
+  while(*path == '/') // 跳过前导斜杠
+    path++; // 指针前移
+  if(*path == 0) // 没有更多路径元素
+    return 0; // 返回0 
+
+  s = path; // 记录当前路径元素的起始位置
+  while(*path != '/' && *path != 0) // 找到下一个斜杠或字符串结束
+    path++; // 指针前移
+  
+  len = path - s; // 计算路径元素的长度
+  if(len >= DIRSIZ) // 如果路径元素长度超过DIRSIZ
+    memmove(name, s, DIRSIZ); // 复制前DIRSIZ个字符到name
   else {
-    memmove(name, s, len);
-    name[len] = 0;
+    memmove(name, s, len); // 复制整个路径元素到name
+    name[len] = 0; // 添加字符串结束符
   }
-  while(*path == '/')
-    path++;
-  return path;
+
+  while(*path == '/') // 跳过斜杠
+    path++; // 指针前移
+  return path; // 返回指向下一个路径元素的指针
 }
 
 // Look up and return the inode for a path name.
 // If parent != 0, return the inode for the parent and copy the final
 // path element into name, which must have room for DIRSIZ bytes.
 // Must be called inside a transaction since it calls iput().
+// 查找并返回路径对应的inode指针 
+// 如果 parent 不是NULL， 返回父目录的inode指针，并将最后一个路径元素复制到name中
+// name必须有足够空间（至少DIRSIZ字节）
+// 必须在一个事务内调用，因为它会调用 iput()
+
+/**
+ * @brief 查找并返回路径对应的inode指针
+ * 
+ * @param path 路径字符串
+ * @param nameiparent 如果非0，返回父目录的inode指针，并将最后一个路径元素复制到name中
+ * @param name 用于存储最后一个路径元素，必须有足够空间（至少DIRSIZ字节）
+ * 
+ * @return struct inode* 指向对应的inode结构体指针
+ */
 static struct inode*
 namex(char *path, int nameiparent, char *name)
 {
   struct inode *ip, *next;
 
-  if(*path == '/')
-    ip = iget(ROOTDEV, ROOTINO);
+  if(*path == '/') // path 是绝对路径  
+    ip = iget(ROOTDEV, ROOTINO); // 从根目录开始查找
   else
-    ip = idup(myproc()->cwd);
+    ip = idup(myproc()->cwd); // 否则从当前工作目录开始查找 
 
-  while((path = skipelem(path, name)) != 0){
-    ilock(ip);
-    if(ip->type != T_DIR){
-      iunlockput(ip);
-      return 0;
+  while((path = skipelem(path, name)) != 0){ // 逐个处理路径元素
+    ilock(ip); // 锁定当前目录的inode
+    if(ip->type != T_DIR){ // 当前inode不是目录
+      iunlockput(ip); // 释放锁并递减引用计数
+      return 0; // 返回0表示查找失败
     }
-    if(nameiparent && *path == '\0'){
+    if(nameiparent && *path == '\0'){ // 需要返回父目录 
       // Stop one level early.
-      iunlock(ip);
-      return ip;
+      // 提前停止一级
+      iunlock(ip); // 释放当前目录的锁
+      return ip; // 返回当前目录的inode指针
     }
-    if((next = dirlookup(ip, name, 0)) == 0){
-      iunlockput(ip);
-      return 0;
+    if((next = dirlookup(ip, name, 0)) == 0){ // 没有找到下一个路径元素对应的inode
+      iunlockput(ip); // 释放锁并递减引用计数
+      return 0; // 返回0表示查找失败
     }
-    iunlockput(ip);
-    ip = next;
+    iunlockput(ip); // 释放当前目录的锁并递减引用计数
+    ip = next; // 继续处理下一个路径元素
   }
-  if(nameiparent){
-    iput(ip);
-    return 0;
+
+  if(nameiparent){ // 需要返回父目录，但路径已处理完
+    iput(ip); // 释放当前inode
+    return 0; // 返回0表示查找失败
   }
-  return ip;
+  return ip; // 返回找到的inode指针
 }
 
 struct inode*
 namei(char *path)
 {
   char name[DIRSIZ];
-  return namex(path, 0, name);
+  return namex(path, 0, name); // 查找路径对应的inode指针
 }
 
 struct inode*
 nameiparent(char *path, char *name)
 {
-  return namex(path, 1, name);
+  return namex(path, 1, name); // 查找路径对应的父目录的inode指针，并将最后一个路径元素复制到name中
 }
