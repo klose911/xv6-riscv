@@ -127,7 +127,7 @@ int             fileread(struct file*, uint64, int n);
 int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
 
-// fs.c
+// fs.c 文件系统
 /**
  * @brief 初始化文件分区系统
  * 
@@ -135,7 +135,27 @@ int             filewrite(struct file*, uint64, int n);
  * 
  */
 void            fsinit(int);
+
+/**
+ * @brief 将新的目录项写入inode dp 指向的目录中 
+ * 
+ * @param dp 指向目录 inode 结构体的指针 
+ * @param name 目录项名称 
+ * 
+ * @return int 成功返回0，失败返回-1（例如磁盘块不足）
+ */
 int             dirlink(struct inode*, char*, uint);
+
+/**
+ * @brief 在目录 inode dp 中查找名称为 name 的目录项 
+ * 
+ * @param dp 指向目录 inode 结构体的指针 
+ * @param name 目录项名称 
+ * @param poff 指向偏移量的指针，如果找到目录项则将其偏移量存储在该指针指向的变量中 
+ * 
+ * @return struct inode* 返回对应的 inode 结构体指针，如果未找到则返回 NULL
+ * 
+ */
 struct inode*   dirlookup(struct inode*, char*, uint*);
 
 /**
@@ -209,6 +229,16 @@ void            iunlockput(struct inode*);
  * 
  */
 void            iupdate(struct inode*);
+
+/**
+ * @brief 比较两个目录项名称是否相同 
+ * 
+ * @param const char* s 第一个目录项名称 
+ * @param const char* t 第二个目录项名称 
+ * 
+ * @return int 如果名称相同返回0，否则返回非零值
+ *  
+ */
 int             namecmp(const char*, const char*);
 /**
  * @brief 根据给定的路径名查找并返回对应的 inode 结构体指针
@@ -223,6 +253,18 @@ int             namecmp(const char*, const char*);
  * 
  */
 struct inode*   namei(char*);
+
+/**
+ * @brief 根据给定的路径名查找并返回对应的父目录的 inode 结构体指针，同时将最后一个路径元素的名称复制到 provided buffer
+ * 
+ * @param path 给定的路径名
+ * @param namebuf 用于存放最后一个路径元素名称的缓冲区
+ * 
+ * @return struct inode* 返回对应的父目录的 inode 结构体指针 
+ * 
+ * 通过 nameiparent，内核或文件系统模块可以根据路径快速定位到具体的父目录对象，进而进行后续的目录操作
+ * 
+ */
 struct inode*   nameiparent(char*, char*);
 
 /**
