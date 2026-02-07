@@ -835,12 +835,18 @@ skipelem(char *path, char *name)
 
 /**
  * @brief 查找并返回路径对应的inode指针
- * 
+ *
  * @param path 路径字符串
- * @param nameiparent 如果非0，返回父目录的inode指针，并将最后一个路径元素复制到name中
+ * @param nameiparent
+如果非0，返回父目录的inode指针，并将最后一个路径元素复制到name中
  * @param name 用于存储最后一个路径元素，必须有足够空间（至少DIRSIZ字节）
- * 
+ *
  * @return struct inode* 指向对应的inode结构体指针
+ *
+ * @note 这里加锁，而iget不加锁的原因：在处理类似于 . 和 .. 这种目录项的时候可能会引起死锁
+ * @note 为了避免在查询的时候，另外一个进程可能正在删除，所以这里不光是unlock,还需要对引用计数-1
+ * @note 为了加速执行，所以这里采用的是对每个inode的细粒度的锁
+ *
  */
 static struct inode*
 namex(char *path, int nameiparent, char *name)
