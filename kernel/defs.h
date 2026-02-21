@@ -114,8 +114,30 @@ void            consputc(int);
 int             exec(char*, char**);
 
 // file.c
-struct file*    filealloc(void);
+/**
+ * @brief 为文件分配一个新的文件结构体 
+ * 
+ * @return struct file* 指向分配的文件结构体指针，如果没有可用文件结构体则返回 NULL 
+ */
+struct file*    filealloc(void); 
+
+/**
+ * @brief 关闭文件
+ * 减少文件引用数，如果引用为0，则释放文件资源（如管道的一端、inode等）
+ * 
+ * @param f 指向要关闭的文件结构体指针
+ * 
+ */
 void            fileclose(struct file*);
+
+/**
+ * @brief 增加文件引用计数，防止文件被关闭 
+ * 
+ * @param f 指向要增加引用计数的文件结构体指针 
+ * 
+ * @return struct file* 指向传入的文件结构体指针 
+ * 
+ */
 struct file*    filedup(struct file*);
 
 /**
@@ -123,8 +145,36 @@ struct file*    filedup(struct file*);
  * 
  */
 void            fileinit(void);
+/**
+ * @brief 读取文件数据到用户空间缓冲区
+ * 
+ * @param f 指向要读取的文件结构体指针
+ * @param addr 用户空间缓冲区的起始地址
+ * @param n 要读取的最大字节数
+ * 
+ * @return int 实际读取的字节数，如果读取过程中发生错误则返回-1， 如果无法读取任何数据则返回0 
+ */
 int             fileread(struct file*, uint64, int n);
+
+/**
+ * @brief 获取文件状态信息并复制到用户空间缓冲区
+ * 
+ * @param f 指向要获取状态的文件结构体指针
+ * @param addr 用户空间缓冲区的起始地址
+ * 
+ * @return int 成功返回0，失败返回-1
+ */
 int             filestat(struct file*, uint64 addr);
+
+/**
+ * @brief 将用户空间缓冲区的数据写入文件
+ * 
+ * @param f 指向要写入的文件结构体指针
+ * @param addr 用户空间缓冲区的起始地址
+ * @param n 要写入的最大字节数
+ * 
+ * @return int 实际写入的字节数，如果写入过程中发生错误则返回-1
+ */
 int             filewrite(struct file*, uint64, int n);
 
 // fs.c 文件系统
