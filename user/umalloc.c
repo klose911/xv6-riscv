@@ -38,12 +38,6 @@ typedef union header Header; // 定义 Header 类型为 header 联合体
 static Header base; // 空闲链表的起始点，base.s.ptr 指向第一个空闲块，base.s.size 通常为0
 static Header *freep; // 指向空闲链表中的一个块，通常用来遍历链表
 
-/**
- * @brief 释放内存块，将其插入空闲链表中，并尝试合并相邻的空闲块以减少碎片
- * 
- * @param ap 指向要释放的内存块的指针，实际指向用户数据区，函数内部会调整为指向块头
- * 
- */
 void
 free(void *ap)
 {
@@ -98,12 +92,6 @@ morecore(uint nu)
   return freep; // 返回空闲链表的指针，供malloc使用
 }
 
-/**
- * @brief 分配内存块，按照请求的字节数分配合适大小的内存块，并返回指向用户数据区的指针
- * 
- * @param nbytes 请求的字节数
- * @return void* 返回指向分配内存块的用户数据区的指针，如果分配失败返回0
- */
 void*
 malloc(uint nbytes)
 {

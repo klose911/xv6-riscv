@@ -13,7 +13,7 @@ main(int argc, char *argv[])
   }
 
   for(i = 1; i < argc; i++){
-    if(unlink(argv[i]) < 0){
+    if(unlink(argv[i]) < 0){ // 调用 unlink 函数删除指定路径的文件，如果失败则打印错误信息但继续尝试删除下一个文件
       fprintf(2, "rm: %s failed to delete\n", argv[i]);
       break;
     }
